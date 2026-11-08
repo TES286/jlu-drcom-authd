@@ -38,6 +38,8 @@ static void test_defaults(void)
 	CHECK(c.port == 61440, "default port should be 61440, got %u", (unsigned)c.port);
 	CHECK(c.keepalive_sec == 20, "default keepalive should be 20");
 	CHECK(c.recv_timeout_ms == 5000, "default recv timeout should be 5000");
+	CHECK(c.restart_backoff_sec == 5, "default restart backoff should be 5");
+	CHECK(c.max_keepalive_fails == 5, "default max_keepalive_fails should be 5");
 	CHECK(strcmp(c.server, "auth.jlu.edu.cn") == 0, "default server wrong: %s", c.server);
 	CHECK(c.log_level == DRCOM_LOG_LEVEL_INFO, "default log level should be INFO");
 }
@@ -169,6 +171,79 @@ static void test_unknown_keys_ignored(void)
 	unlink(path);
 }
 
+/* ---- drcom_appconf_validate() tests ---- */
+
+static void test_validate_missing_username(void)
+{
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	/* Set password but not username. */
+	strncat(c.password, "secret", sizeof(c.password) - 1);
+	char err[256] = "";
+	int r = drcom_appconf_validate(&c, err, sizeof(err));
+	CHECK(r < 0, "validate should fail with missing username");
+	CHECK(strstr(err, "Username") != NULL, "error should mention Username: %s", err);
+}
+
+static void test_validate_missing_password(void)
+{
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	strncat(c.username, "user", sizeof(c.username) - 1);
+	/* No password, no password_file. */
+	char err[256] = "";
+	int r = drcom_appconf_validate(&c, err, sizeof(err));
+	CHECK(r < 0, "validate should fail with missing password");
+	CHECK(strstr(err, "Password") != NULL, "error should mention Password: %s", err);
+}
+
+static void test_validate_bad_interface(void)
+{
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	strncat(c.username, "user", sizeof(c.username) - 1);
+	strncat(c.password, "pass", sizeof(c.password) - 1);
+	strncat(c.interface, "nonexistent_iface_xyz", sizeof(c.interface) - 1);
+	char err[256] = "";
+	int r = drcom_appconf_validate(&c, err, sizeof(err));
+	CHECK(r < 0, "validate should fail with non-existent interface");
+	CHECK(strstr(err, "Interface") != NULL, "error should mention Interface: %s", err);
+}
+
+static void test_validate_max_keepalive_fails(void)
+{
+	/* max_keepalive_fails == 0 is allowed (means "never exit"). */
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	strncat(c.username, "user", sizeof(c.username) - 1);
+	strncat(c.password, "pass", sizeof(c.password) - 1);
+	/* Provide a MAC so interface detection is skipped. */
+	c.mac[0] = 0xaa;
+	c.mac[5] = 0xff;
+	c.interface[0] = 0; /* no interface, use explicit MAC */
+	c.max_keepalive_fails = 0;
+	char err[256] = "";
+	int r = drcom_appconf_validate(&c, err, sizeof(err));
+	CHECK(r == 0, "max_keepalive_fails=0 should be valid: %s", err);
+}
+
+static void test_validate_timing_zero(void)
+{
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	strncat(c.username, "user", sizeof(c.username) - 1);
+	strncat(c.password, "pass", sizeof(c.password) - 1);
+	c.mac[0] = 0xaa;
+	c.interface[0] = 0;
+	c.keepalive_sec = 0;
+	char err[256] = "";
+	int r = drcom_appconf_validate(&c, err, sizeof(err));
+	CHECK(r < 0, "validate should fail with keepalive_sec=0");
+	CHECK(strstr(err, "KeepAliveSec") != NULL,
+		  "error should mention KeepAliveSec: %s",
+		  err);
+}
+
 int main(void)
 {
 	test_defaults();
@@ -178,6 +253,11 @@ int main(void)
 	test_parse_quoted_value();
 	test_password_file();
 	test_unknown_keys_ignored();
+	test_validate_missing_username();
+	test_validate_missing_password();
+	test_validate_bad_interface();
+	test_validate_max_keepalive_fails();
+	test_validate_timing_zero();
 
 	if (failures == 0) {
 		printf("test_appconf: PASS\n");

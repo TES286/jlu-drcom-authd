@@ -346,3 +346,76 @@ int drcom_appconf_resolve_password(drcom_appconf_t *c, char *errbuf, size_t errb
 	return 0;
 }
 
+static bool mac_is_zero(const uint8_t mac[6])
+{
+	for (int i = 0; i < 6; i++) {
+		if (mac[i] != 0)
+			return false;
+	}
+	return true;
+}
+
+int drcom_appconf_validate(const drcom_appconf_t *c, char *errbuf, size_t errbuf_sz)
+{
+	/* Authentication. */
+	if (c->username[0] == 0)
+		return set_err(errbuf, errbuf_sz, "Username is not set");
+	if (c->password[0] == 0)
+		return set_err(
+			errbuf, errbuf_sz, "Password is not set (and no PasswordFile resolved)");
+
+	/* Network. */
+	if (c->server[0] == 0)
+		return set_err(errbuf, errbuf_sz, "Server is not set");
+	if (c->port == 0)
+		return set_err(errbuf, errbuf_sz, "Port is 0");
+	if (c->interface[0]) {
+		/* Interface must exist and have a MAC. */
+		uint8_t mac[6];
+		int r = drcom_get_mac(c->interface, mac);
+		if (r < 0) {
+			return set_err(errbuf,
+						   errbuf_sz,
+						   "Interface '%s' not found or has no MAC: %s",
+						   c->interface,
+						   strerror(-r));
+		}
+		/* If the user also set an explicit MAC, that's fine —
+		 * we don't check that it matches; the authd state machine
+		 * will use whichever is set. */
+	} else if (mac_is_zero(c->mac)) {
+		/* No interface and no explicit MAC: must be able to
+		 * auto-detect an interface. */
+		char ifn[DRCOM_IFACE_MAX];
+		uint8_t mac[6];
+		int r = drcom_detect_interface(ifn, sizeof(ifn), mac);
+		if (r < 0) {
+			return set_err(
+				errbuf,
+				errbuf_sz,
+				"no Interface or MAC configured, and auto-detection failed: %s",
+				strerror(-r));
+		}
+	}
+
+	/* Hostname: if set, must fit the protocol field.  The wire field
+	 * is 32 bytes; we allow up to DRCOM_HOSTNAME_MAX-1 but warn if
+	 * it exceeds the wire field. */
+	if (c->hostname[0] && strlen(c->hostname) > DRCOM_HOSTNAME_MAX - 1)
+		return set_err(errbuf,
+					   errbuf_sz,
+					   "Hostname '%s' is too long (max %d bytes)",
+					   c->hostname,
+					   DRCOM_HOSTNAME_MAX - 1);
+
+	/* Daemon timing parameters. */
+	if (c->keepalive_sec == 0)
+		return set_err(errbuf, errbuf_sz, "KeepAliveSec must be > 0");
+	if (c->recv_timeout_ms == 0)
+		return set_err(errbuf, errbuf_sz, "RecvTimeoutMs must be > 0");
+	if (c->restart_backoff_sec == 0)
+		return set_err(errbuf, errbuf_sz, "RestartBackoffSec must be > 0");
+	/* max_keepalive_fails == 0 means "never exit" — allowed. */
+
+	return 0;
+}

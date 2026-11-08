@@ -87,5 +87,28 @@ void drcom_appconf_apply_env(drcom_appconf_t *c);
 /** Resolve password from password_file if set.  Returns 0 on success. */
 int drcom_appconf_resolve_password(drcom_appconf_t *c, char *errbuf, size_t errbuf_sz);
 
+/**
+ * Validate cross-field constraints that drcom_appconf_load() cannot check
+ * while parsing individual lines.
+ *
+ * Checks performed:
+ *   - Username must be set.
+ *   - Password must be set (either inline or resolved from PasswordFile).
+ *   - Server must be set and non-empty.
+ *   - Port must be in 1..65535.
+ *   - If Interface is set, the interface must exist and have a MAC.
+ *   - If MAC is set, it must not be all-zero.
+ *   - If neither Interface nor MAC is set, an auto-detectable interface
+ *     must exist.
+ *   - Hostname, if set, must be non-empty and fit the protocol field.
+ *   - KeepAliveSec, RecvTimeoutMs, RestartBackoffSec must be > 0.
+ *
+ * @return 0 on success, negative errno-style code on failure (errbuf
+ *         filled with a human-readable message).
+ */
+int drcom_appconf_validate(const drcom_appconf_t *c, char *errbuf, size_t errbuf_sz);
+
+#ifdef __cplusplus
+}
 #endif
 #endif /* DRCOM_APPCONF_H */

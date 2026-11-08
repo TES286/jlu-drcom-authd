@@ -202,6 +202,16 @@ int main(int argc, char **argv)
 	drcom_log_init("jlu-drcom-authd", conf.log_level, conf.foreground);
 	drcom_log_info("starting %s version %s", "jlu-drcom-authd", PACKAGE_VERSION);
 
+	/* Validate cross-field config constraints before doing anything
+	 * expensive (network, crypto).  This catches misconfigurations
+	 * like a non-existent Interface or missing PasswordFile at the
+	 * earliest possible point. */
+	r = drcom_appconf_validate(&conf, errbuf, sizeof(errbuf));
+	if (r < 0) {
+		drcom_log_err("config validation failed: %s", errbuf);
+		return 2;
+	}
+
 	/* Probe CPU features once at startup so the crypto module can
 	 * dispatch to the optimal code path without per-call overhead. */
 	drcom_cpufeatures_init();
@@ -209,11 +219,6 @@ int main(int argc, char **argv)
 					(int)drcom_cpufeatures_neon(),
 					(int)drcom_cpufeatures_crc32(),
 					(int)drcom_cpufeatures_aes());
-
-	if (conf.username[0] == 0) {
-		drcom_log_err("no Username configured");
-		return 2;
-	}
 
 	sd_event *event = NULL;
 	r = sd_event_default(&event);
