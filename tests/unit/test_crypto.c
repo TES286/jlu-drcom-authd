@@ -10,6 +10,7 @@
  */
 #include "crypto.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -316,6 +317,32 @@ static void test_random(void)
 		  "drcom_random returned identical buffers (vanishingly unlikely)");
 }
 
+static void test_random_large(void)
+{
+	/* Verify that drcom_random can fill a larger buffer without
+	 * aborting — this exercises the read-loop in both the getrandom
+	 * and /dev/urandom fallback paths. */
+	uint8_t buf[256];
+	drcom_random(buf, sizeof(buf));
+	/* At least one byte should be non-zero (vanishingly unlikely
+	 * for 256 random bytes). */
+	bool nonzero = false;
+	for (size_t i = 0; i < sizeof(buf); i++) {
+		if (buf[i] != 0) {
+			nonzero = true;
+			break;
+		}
+	}
+	CHECK(nonzero, "drcom_random returned all-zero 256-byte buffer");
+}
+
+static void test_random_zero_len(void)
+{
+	/* Zero-length request should be a no-op (no abort). */
+	drcom_random(NULL, 0);
+	CHECK(1, "zero-length drcom_random did not abort");
+}
+
 int main(void)
 {
 	test_md5_rfc1321();
@@ -329,6 +356,8 @@ int main(void)
 	test_crc_empty();
 	test_crc_known();
 	test_random();
+	test_random_large();
+	test_random_zero_len();
 
 	if (failures == 0) {
 		printf("test_crypto: PASS\n");

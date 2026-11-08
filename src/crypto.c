@@ -20,14 +20,17 @@
  * The intrinsics are compiled in whenever __ARM_NEON is defined (i.e.
  * targeting aarch64), but only dispatched at runtime.
  */
+#define _GNU_SOURCE 1 /* O_CLOEXEC */
 #include "cpufeatures.h"
 #include "crypto.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
+#include <unistd.h>
 
 #if defined(__aarch64__) && defined(__ARM_NEON)
 #include <arm_neon.h>
@@ -357,8 +360,46 @@ void drcom_crc(uint8_t out[DRCOM_CRC_SIZE], const uint8_t *data, size_t len)
 }
 
 /* ------------------------------------------------------------------ */
-/* Random bytes via getrandom(2)                                      */
+/* Random bytes via getrandom(2) with /dev/urandom fallback           */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Fallback for environments where getrandom(2) is unavailable:
+ *   - kernel < 3.17 (ENOSYS from the glibc wrapper)
+ *   - seccomp filters that block the syscall (ENOSYS / EPERM)
+ *   - very early boot before the crng is initialised (EAGAIN with
+ *     GRND_NONBLOCK — we use blocking mode so this is unlikely, but
+ *     defend against it anyway)
+ *
+ * Reads from /dev/urandom with a retry loop.  /dev/urandom never blocks
+ * once initialised and is the canonical fallback per random(4).
+ */
+static int random_from_urandom(uint8_t *out, size_t len)
+{
+	int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return -errno;
+
+	while (len > 0) {
+		ssize_t r = read(fd, out, len);
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;
+			int e = errno;
+			close(fd);
+			return -e;
+		}
+		if (r == 0) {
+			/* Should never happen for /dev/urandom. */
+			close(fd);
+			return -EIO;
+		}
+		out += r;
+		len -= (size_t)r;
+	}
+	close(fd);
+	return 0;
+}
 
 void drcom_random(uint8_t *out, size_t len)
 {
@@ -368,7 +409,24 @@ void drcom_random(uint8_t *out, size_t len)
 			if (errno == EINTR) {
 				continue;
 			}
-			/* Should not happen on any modern kernel; abort defensively. */
+			/* ENOSYS: kernel < 3.17 or seccomp filter.
+			 * EPERM:  seccomp filter blocking the syscall.
+			 * EAGAIN: entropy pool not ready (very early boot).
+			 *         With flags=0 getrandom blocks, but a
+			 *         malformed kernel/seccomp could still
+			 *         return EAGAIN; fall through to urandom.
+			 * Fall back to /dev/urandom for all of these. */
+			if (errno == ENOSYS || errno == EPERM || errno == EAGAIN) {
+				int e = random_from_urandom(out, len);
+				if (e < 0) {
+					/* Last resort: neither getrandom
+					 * nor /dev/urandom worked.  This
+					 * is a fatal misconfiguration. */
+					abort();
+				}
+				return;
+			}
+			/* EFAULT / EINVAL: programmer error. */
 			abort();
 		}
 		out += r;
