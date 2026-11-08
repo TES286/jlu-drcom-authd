@@ -15,6 +15,7 @@
 
 #include "appconf.h"
 #include "authd.h"
+#include "cpufeatures.h"
 #include "log.h"
 #include "protocol.h"
 #include "util.h"
@@ -200,6 +201,14 @@ int main(int argc, char **argv)
 
 	drcom_log_init("jlu-drcom-authd", conf.log_level, conf.foreground);
 	drcom_log_info("starting %s version %s", "jlu-drcom-authd", PACKAGE_VERSION);
+
+	/* Probe CPU features once at startup so the crypto module can
+	 * dispatch to the optimal code path without per-call overhead. */
+	drcom_cpufeatures_init();
+	drcom_log_debug("cpu features: neon=%d crc32=%d aes=%d",
+					(int)drcom_cpufeatures_neon(),
+					(int)drcom_cpufeatures_crc32(),
+					(int)drcom_cpufeatures_aes());
 
 	if (conf.username[0] == 0) {
 		drcom_log_err("no Username configured");

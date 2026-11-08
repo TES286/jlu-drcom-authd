@@ -3,9 +3,11 @@
 # All unit tests link against libdrcom_dep (defined in src/meson.build).
 
 tests_unit = [
-    ['test_crypto',   'unit/test_crypto.c'],
-    ['test_protocol', 'unit/test_protocol.c'],
-    ['test_appconf',  'unit/test_appconf.c'],
+    ['test_cpufeatures', 'unit/test_cpufeatures.c'],
+    ['test_crypto',      'unit/test_crypto.c'],
+    ['test_protocol',    'unit/test_protocol.c'],
+    ['test_appconf',     'unit/test_appconf.c'],
+    ['test_netlink',     'unit/test_netlink.c'],
 ]
 
 foreach t : tests_unit

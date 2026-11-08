@@ -19,6 +19,7 @@
 #define DRCOM_AUTHD_H
 
 #include "appconf.h"
+#include "netlink.h"
 #include "network.h"
 #include "protocol.h"
 

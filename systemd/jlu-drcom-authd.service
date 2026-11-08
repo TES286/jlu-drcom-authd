@@ -10,8 +10,6 @@ After=network-online.target
 Wants=network-online.target
 After=network.target
 Wants=network.target
-# Re-authenticate whenever the link comes back.
-After=network.target
 
 [Service]
 Type=notify
@@ -42,7 +40,8 @@ ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectProc=invisible
 ProtectSystem=strict
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK is needed for rtnetlink link-state monitoring.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes

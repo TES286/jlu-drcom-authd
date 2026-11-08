@@ -6,9 +6,11 @@
 #define _GNU_SOURCE 1
 #include "authd.h"
 #include "log.h"
+#include "netlink.h"
 #include "util.h"
 
 #include <errno.h>
+#include <net/if.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,12 +25,16 @@ struct drcom_authd {
 	drcom_appconf_t conf;
 	sd_event *event;
 	sd_event_source *keepalive_timer;
+	sd_event_source *reauth_defer;
+	drcom_netlink_t *netlink;
 	drcom_session_t session;
 	drcom_net_t net;
 	drcom_state_t state;
 	drcom_status_cb_t status_cb;
 	void *status_userdata;
 	char status_buf[128];
+	int watched_ifindex; /* -1 = no link monitoring */
+	bool link_up;		 /* current link state of the watched iface */
 	bool started : 1;
 	bool stopping : 1;
 };
@@ -239,25 +245,55 @@ done:
 	return 0;
 }
 
+/**
+ * Tear down the current session and re-authenticate from scratch.
+ * Called on keepalive failure or link-up after a link-down.
+ * Returns 0 on success, negative errno on failure.
+ */
+static int reauthenticate(drcom_authd_t *a)
+{
+	drcom_net_close(&a->net);
+	set_status(a, DRCOM_STATE_INIT);
+
+	struct sockaddr_in srv;
+	if (drcom_resolve_ipv4(a->conf.server, a->conf.port, &srv) < 0) {
+		drcom_log_err("re-auth: cannot resolve %s", a->conf.server);
+		return -EHOSTUNREACH;
+	}
+	if (drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms) < 0) {
+		drcom_log_err("re-auth: socket open failed");
+		return -EIO;
+	}
+	if (do_challenge_login(a) != 0) {
+		drcom_log_err("re-authentication failed; will retry next tick");
+		return -EACCES;
+	}
+	set_status(a, DRCOM_STATE_ONLINE);
+	return 0;
+}
+
 static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 {
+	(void)usec;
 	drcom_authd_t *a = userdata;
+
+	/* If we are monitoring link state and the link is down, skip the
+	 * keepalive cycle entirely — the server can't hear us and we'd
+	 * just waste a timeout.  Re-arm the timer and wait for link-up. */
+	if (a->watched_ifindex >= 0 && !a->link_up) {
+		uint64_t next;
+		(void)sd_event_now(sd_event_source_get_event(s), CLOCK_MONOTONIC, &next);
+		next += (uint64_t)a->conf.keepalive_sec * UINT64_C(1000000);
+		(void)sd_event_source_set_time(s, next);
+		(void)sd_event_source_set_enabled(s, SD_EVENT_ONESHOT);
+		return 0;
+	}
+
 	int r = do_keepalive_cycle(a);
 	if (r < 0) {
 		drcom_log_warn("keepalive cycle failed (%s); will restart challenge/login",
 					   strerror(-r));
-		/* Tear down and re-login. */
-		drcom_net_close(&a->net);
-		set_status(a, DRCOM_STATE_INIT);
-		struct sockaddr_in srv;
-		if (drcom_resolve_ipv4(a->conf.server, a->conf.port, &srv) == 0 &&
-			drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms) == 0) {
-			if (do_challenge_login(a) == 0) {
-				set_status(a, DRCOM_STATE_ONLINE);
-			} else {
-				drcom_log_err("re-authentication failed; will retry next tick");
-			}
-		}
+		(void)reauthenticate(a);
 	}
 
 	/* Re-arm timer for the next cycle. */
@@ -287,6 +323,70 @@ static int schedule_keepalive(drcom_authd_t *a)
 	return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Link state monitoring                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Deferred re-authentication callback.  Scheduled by on_link_state()
+ * when the link comes back up.  Doing the re-auth in a defer source
+ * (rather than inside the netlink IO callback) avoids blocking the
+ * event loop during the challenge/login network round-trips.
+ */
+static int on_reauth_defer(sd_event_source *s, void *userdata)
+{
+	(void)s;
+	drcom_authd_t *a = userdata;
+	a->reauth_defer = NULL; /* one-shot; auto-unrefs */
+	if (a->stopping)
+		return 0;
+	if (!a->link_up) {
+		drcom_log_debug("link went down again before re-auth; deferring");
+		return 0;
+	}
+	drcom_log_info("link up — re-authenticating");
+	(void)reauthenticate(a);
+	return 0;
+}
+
+static int schedule_reauth(drcom_authd_t *a)
+{
+	if (a->reauth_defer)
+		return 0; /* already scheduled */
+	return sd_event_add_defer(a->event, &a->reauth_defer, on_reauth_defer, a);
+}
+
+/**
+ * Netlink link state callback.  Invoked by drcom_netlink_t on every
+ * RTM_NEWLINK / RTM_DELLINK notification for any interface.  We filter
+ * to the watched interface and update the link_up flag.
+ */
+static void on_link_state(int ifindex, const char *ifname, bool link_up, void *userdata)
+{
+	(void)ifname;
+	drcom_authd_t *a = userdata;
+	if (a->watched_ifindex < 0 || ifindex != a->watched_ifindex)
+		return;
+
+	if (link_up == a->link_up)
+		return; /* no change */
+
+	a->link_up = link_up;
+	if (link_up) {
+		drcom_log_info("link up on %s (ifindex %d)", ifname, ifindex);
+		/* Schedule a re-auth on the next event loop iteration. */
+		(void)schedule_reauth(a);
+	} else {
+		drcom_log_warn(
+			"link down on %s (ifindex %d) — pausing keepalive", ifname, ifindex);
+		/* Close the UDP socket immediately so the next keepalive
+		 * tick doesn't waste a recv timeout.  The keepalive timer
+		 * stays armed but will skip (see on_keepalive). */
+		drcom_net_close(&a->net);
+		set_status(a, DRCOM_STATE_INIT);
+	}
+}
+
 drcom_authd_t *drcom_authd_new(const drcom_appconf_t *conf, sd_event *event)
 {
 	drcom_authd_t *a = calloc(1, sizeof(*a));
@@ -296,6 +396,8 @@ drcom_authd_t *drcom_authd_new(const drcom_appconf_t *conf, sd_event *event)
 	a->event = event;
 	a->state = DRCOM_STATE_INIT;
 	a->net.fd = -1;
+	a->watched_ifindex = -1;
+	a->link_up = true; /* assume up until proven otherwise */
 	drcom_session_init(&a->session);
 
 	/* Resolve MAC if not configured. */
@@ -362,9 +464,11 @@ void drcom_authd_free(drcom_authd_t *a)
 {
 	if (!a)
 		return;
-	if (a->keepalive_timer) {
+	if (a->reauth_defer)
+		sd_event_source_unref(a->reauth_defer);
+	if (a->keepalive_timer)
 		sd_event_source_unref(a->keepalive_timer);
-	}
+	drcom_netlink_free(a->netlink);
 	drcom_net_close(&a->net);
 	free(a);
 }
@@ -383,6 +487,52 @@ int drcom_authd_start(drcom_authd_t *a)
 		a->session.mac[3] == 0 && a->session.mac[4] == 0 && a->session.mac[5] == 0) {
 		drcom_log_err("MAC address could not be determined");
 		return -EINVAL;
+	}
+
+	/* Set up link state monitoring for the configured interface.
+	 * This lets us react to link down/up in ~1 ms instead of waiting
+	 * for a keepalive timeout.  If the interface name is known we
+	 * resolve its ifindex and subscribe to RTMGRP_LINK. */
+	if (a->conf.interface[0]) {
+		unsigned idx = if_nametoindex(a->conf.interface);
+		if (idx > 0) {
+			a->watched_ifindex = (int)idx;
+			int r = drcom_netlink_new(&a->netlink, a->event, on_link_state, a);
+			if (r < 0) {
+				drcom_log_warn("netlink monitoring unavailable "
+							   "(%s); will rely on keepalive timeouts",
+							   strerror(-r));
+				a->watched_ifindex = -1;
+			} else {
+				/* Query the current link state so we don't
+				 * attempt to authenticate on a dead link. */
+				int q = drcom_netlink_query_link(a->conf.interface);
+				if (q == 0) {
+					drcom_log_info("interface %s is down; "
+								   "waiting for link-up",
+								   a->conf.interface);
+					a->link_up = false;
+				} else {
+					a->link_up = true;
+				}
+			}
+		}
+	}
+
+	/* If the link is down, don't attempt to authenticate now — just
+	 * signal READY and wait for the link-up callback. */
+	if (a->watched_ifindex >= 0 && !a->link_up) {
+		set_status(a, DRCOM_STATE_INIT);
+		/* Schedule the keepalive timer; it will skip while the
+		 * link is down and re-auth when it comes up. */
+		int r = schedule_keepalive(a);
+		if (r < 0) {
+			drcom_log_err("failed to schedule keepalive: %s", strerror(-r));
+			return r;
+		}
+		a->started = true;
+		(void)sd_notify(0, "READY=1");
+		return 0;
 	}
 
 	struct sockaddr_in srv;
@@ -422,6 +572,10 @@ int drcom_authd_stop(drcom_authd_t *a)
 	a->stopping = true;
 	(void)sd_notify(0, "STOPPING=1");
 
+	if (a->reauth_defer) {
+		sd_event_source_unref(a->reauth_defer);
+		a->reauth_defer = NULL;
+	}
 	if (a->keepalive_timer) {
 		sd_event_source_unref(a->keepalive_timer);
 		a->keepalive_timer = NULL;
