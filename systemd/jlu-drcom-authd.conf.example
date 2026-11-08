@@ -30,6 +30,11 @@ KeepAliveSec = 20
 RecvTimeoutMs = 5000
 # Backoff before re-authenticating after a keepalive failure.
 RestartBackoffSec = 5
+# Consecutive keepalive failures before the daemon exits (so systemd
+# can restart it fresh).  0 = never exit (rely on the watchdog).
+# Transient errors (EAGAIN/timeout) do not count toward this threshold
+# unless they persist; protocol/network errors do.
+MaxKeepaliveFails = 5
 # syslog-style log level: emerg|alert|crit|err|warning|notice|info|debug
 LogLevel = info
 # Stay in foreground (auto-set under systemd).  Set to true for debugging.

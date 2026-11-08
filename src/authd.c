@@ -33,8 +33,9 @@ struct drcom_authd {
 	drcom_status_cb_t status_cb;
 	void *status_userdata;
 	char status_buf[128];
-	int watched_ifindex; /* -1 = no link monitoring */
-	bool link_up;		 /* current link state of the watched iface */
+	int watched_ifindex;		   /* -1 = no link monitoring */
+	bool link_up;				   /* current link state of the watched iface */
+	unsigned keepalive_fail_count; /* consecutive failures, reset on success */
 	bool started : 1;
 	bool stopping : 1;
 };
@@ -52,6 +53,66 @@ static const char *state_name(drcom_state_t s)
 		return "stopped";
 	}
 	return "unknown";
+}
+
+/**
+ * Classification of keepalive failures, used by on_keepalive() to pick
+ * the right recovery action.
+ *
+ *   TRANSIENT  — the local socket or kernel reported a transient error
+ *                (EAGAIN/EWOULDBLOCK from SO_RCVTIMEO, or ENOMEM).
+ *                The server may simply be slow or the network briefly
+ *                congested.  Retry on the next keepalive tick without
+ *                tearing down the session.
+ *
+ *   NETWORK    — the network path is broken (ENETUNREACH, EHOSTUNREACH,
+ *                ECONNREFUSED, EPIPE, EBADF, ETIMEDOUT).  The UDP socket
+ *                is dead or the server is unreachable.  Re-authenticate
+ *                (close + challenge + login) on the next tick.
+ *
+ *   PROTOCOL   — the server replied with a malformed or unexpected
+ *                packet (DRCOM_ERR_BAD_PACKET / DRCOM_ERR_SERVER / -EIO
+ *                from a parser).  The session is logically invalid;
+ *                perform a logout + re-challenge/login.
+ *
+ *   FATAL      — anything else.  Treat as a persistent failure; after a
+ *                configurable number of consecutive FATAL/PROTOCOL
+ *                failures, exit the event loop so systemd can restart
+ *                the daemon fresh.
+ */
+typedef enum {
+	KEEPALIVE_ERR_TRANSIENT,
+	KEEPALIVE_ERR_NETWORK,
+	KEEPALIVE_ERR_PROTOCOL,
+	KEEPALIVE_ERR_FATAL,
+} keepalive_err_class_t;
+
+static keepalive_err_class_t classify_keepalive_err(int err)
+{
+	switch (err) {
+	case -EAGAIN: /* EWOULDBLOCK is the same value on Linux */
+	case -ENOMEM:
+		return KEEPALIVE_ERR_TRANSIENT;
+
+	case -ENETUNREACH:
+	case -EHOSTUNREACH:
+	case -ECONNREFUSED:
+	case -ECONNRESET:
+	case -EPIPE:
+	case -EBADF:
+	case -ETIMEDOUT:
+		return KEEPALIVE_ERR_NETWORK;
+
+	case -EIO:
+		return KEEPALIVE_ERR_PROTOCOL;
+
+	case -EACCES:
+		/* Login rejected by server (bad credentials / MAC). */
+		return KEEPALIVE_ERR_FATAL;
+
+	default:
+		return KEEPALIVE_ERR_FATAL;
+	}
 }
 
 static void set_status(drcom_authd_t *a, drcom_state_t s)
@@ -291,9 +352,73 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 
 	int r = do_keepalive_cycle(a);
 	if (r < 0) {
-		drcom_log_warn("keepalive cycle failed (%s); will restart challenge/login",
-					   strerror(-r));
-		(void)reauthenticate(a);
+		keepalive_err_class_t cls = classify_keepalive_err(r);
+		a->keepalive_fail_count++;
+
+		switch (cls) {
+		case KEEPALIVE_ERR_TRANSIENT:
+			/* EAGAIN/EWOULDBLOCK from SO_RCVTIMEO or ENOMEM.
+			 * The server may just be slow; retry on the next
+			 * tick without tearing down the session. */
+			drcom_log_warn("keepalive transient error (%s); will retry next tick [%u/%u]",
+						   strerror(-r),
+						   a->keepalive_fail_count,
+						   a->conf.max_keepalive_fails);
+			break;
+
+		case KEEPALIVE_ERR_NETWORK:
+			/* Network path broken.  Re-authenticate (close +
+			 * challenge + login) so the next tick starts fresh. */
+			drcom_log_warn("keepalive network error (%s); re-authenticating [%u/%u]",
+						   strerror(-r),
+						   a->keepalive_fail_count,
+						   a->conf.max_keepalive_fails);
+			(void)reauthenticate(a);
+			break;
+
+		case KEEPALIVE_ERR_PROTOCOL:
+			/* Server replied with a malformed/unexpected packet.
+			 * The session is logically invalid; logout + re-auth. */
+			drcom_log_warn("keepalive protocol error (%s); re-authenticating [%u/%u]",
+						   strerror(-r),
+						   a->keepalive_fail_count,
+						   a->conf.max_keepalive_fails);
+			/* Best-effort logout before re-auth.  We ignore the
+			 * return value because the session may already be
+			 * half-broken. */
+			if (a->net.fd >= 0)
+				(void)do_logout(a);
+			(void)reauthenticate(a);
+			break;
+
+		case KEEPALIVE_ERR_FATAL:
+			/* Login rejected (bad creds/MAC) or unknown error.
+			 * Re-auth won't help; let systemd restart us after
+			 * the configured failure threshold. */
+			drcom_log_err("keepalive fatal error (%s) [%u/%u]",
+						  strerror(-r),
+						  a->keepalive_fail_count,
+						  a->conf.max_keepalive_fails);
+			(void)reauthenticate(a);
+			break;
+		}
+
+		/* If we've hit the consecutive failure threshold, exit the
+		 * event loop so systemd can restart the daemon fresh.  A
+		 * threshold of 0 means "never exit" (rely on watchdog). */
+		if (a->conf.max_keepalive_fails > 0 &&
+			a->keepalive_fail_count >= a->conf.max_keepalive_fails) {
+			drcom_log_err("reached MaxKeepaliveFails (%u); exiting for systemd restart",
+						  a->conf.max_keepalive_fails);
+			sd_event_exit(sd_event_source_get_event(s), 0);
+			return 0;
+		}
+	} else {
+		if (a->keepalive_fail_count > 0) {
+			drcom_log_info("keepalive recovered after %u consecutive failures",
+						   a->keepalive_fail_count);
+		}
+		a->keepalive_fail_count = 0;
 	}
 
 	/* Re-arm timer for the next cycle. */

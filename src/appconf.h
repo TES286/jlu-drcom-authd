@@ -52,6 +52,7 @@ typedef struct {
 	unsigned keepalive_sec;		  /* default 20 */
 	unsigned recv_timeout_ms;	  /* default 5000 */
 	unsigned restart_backoff_sec; /* default 5 */
+	unsigned max_keepalive_fails; /* default 5; 0 = never exit */
 	int log_level;				  /* drcom_log_level_t */
 	int foreground;				  /* 1 = do not call daemon(3) */
 } drcom_appconf_t;
@@ -86,7 +87,5 @@ void drcom_appconf_apply_env(drcom_appconf_t *c);
 /** Resolve password from password_file if set.  Returns 0 on success. */
 int drcom_appconf_resolve_password(drcom_appconf_t *c, char *errbuf, size_t errbuf_sz);
 
-#ifdef __cplusplus
-}
 #endif
 #endif /* DRCOM_APPCONF_H */

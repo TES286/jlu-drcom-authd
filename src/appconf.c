@@ -8,6 +8,7 @@
  */
 #include "appconf.h"
 #include "protocol.h"
+#include "util.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -86,6 +87,7 @@ void drcom_appconf_defaults(drcom_appconf_t *c)
 	c->keepalive_sec = DRCOM_KEEPALIVE_SEC;
 	c->recv_timeout_ms = DRCOM_RECV_TIMEOUT_MS;
 	c->restart_backoff_sec = 5;
+	c->max_keepalive_fails = 5;
 	c->log_level = DRCOM_LOG_LEVEL_INFO;
 	c->foreground = 0;
 	strncat(c->server, "auth.jlu.edu.cn", sizeof(c->server) - 1);
@@ -174,6 +176,14 @@ int drcom_appconf_set(drcom_appconf_t *c,
 			if (r < 0)
 				return set_err(errbuf, errbuf_sz, "invalid RestartBackoffSec: %s", value);
 			c->restart_backoff_sec = v;
+			return 0;
+		}
+		if (strcmp(key, "MaxKeepaliveFails") == 0) {
+			unsigned v;
+			int r = parse_uint(value, &v);
+			if (r < 0)
+				return set_err(errbuf, errbuf_sz, "invalid MaxKeepaliveFails: %s", value);
+			c->max_keepalive_fails = v;
 			return 0;
 		}
 		if (strcmp(key, "LogLevel") == 0) {
@@ -335,3 +345,4 @@ int drcom_appconf_resolve_password(drcom_appconf_t *c, char *errbuf, size_t errb
 	__builtin_memcpy(c->password, buf, n + 1);
 	return 0;
 }
+
