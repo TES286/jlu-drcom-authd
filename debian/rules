@@ -2,19 +2,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-export DEB_BUILD_OPTIONS = terse
 
 %:
-	dh $@ --buildsystem=meson+ninja
+	dh $@ --buildsystem=meson
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
 		-Dsystemdsystemunitdir=/lib/systemd/system \
 		-Dtests=disabled
 
-# The meson install target already places the binary, unit files, and
-# example config.  We just need to also install the Debian-specific
-# maintainer scripts and tmpfiles config.
+# Install the tmpfiles.d snippet alongside the meson-installed files.
 override_dh_install:
 	dh_install
 	install -D -m 0644 debian/jlu-drcom-authd.tmpfiles \
