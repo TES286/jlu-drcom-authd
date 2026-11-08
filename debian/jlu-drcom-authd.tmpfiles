@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# systemd-tmpfiles snippet: create runtime directories and config dir
+# with safe permissions.
+#
+# Type letters:
+#   d  = create directory
+#   f  = create file (empty)
+#   z  = adjust SELinux label (noop if SELinux disabled)
+#
+# See tmpfiles.d(5) for details.
+
+# Configuration directory (owner root:root, mode 0750 — the config may
+# contain a password, so restrict to root).
+d /etc/jlu-drcom-authd 0750 root root -
+f /etc/jlu-drcom-authd/password 0600 root root -
+
+# State directory (runtime auth session data).
+d /var/lib/jlu-drcom-authd 0755 root root -
+
+# Log directory (used when journald is unavailable).
+d /var/log/jlu-drcom-authd 0755 root root -
+
+# Runtime directory (PID file, etc.).
+d /run/jlu-drcom-authd 0755 root root -

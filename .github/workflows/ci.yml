@@ -2,8 +2,8 @@
 # CI for jlu-drcom-authd.
 #
 # Builds and tests the project on amd64 (native) and arm64 (using
-# GitHub's native arm64 runners).  Uploads build logs and test results
-# as artifacts.
+# GitHub's native arm64 runners), builds Debian packages, and
+# publishes release artifacts on tag push.
 
 name: CI
 
@@ -87,9 +87,59 @@ jobs:
             build/meson-logs/
             build/testlog.txt
 
+  deb-package:
+    name: Build .deb (${{ matrix.arch }})
+    needs: format-check
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config \
+            libsystemd-dev python3 \
+            debhelper dh-make dpkg-dev
+
+      - name: Build Debian package
+        run: |
+          dpkg-buildpackage -us -uc -b
+          # Move the built .deb and metadata into the repo for artifact upload.
+          mkdir -p artifacts
+          mv ../jlu-drcom-authd_*.deb artifacts/ 2>/dev/null || true
+          mv ../jlu-drcom-authd_*.buildinfo artifacts/ 2>/dev/null || true
+          mv ../jlu-drcom-authd_*.changes artifacts/ 2>/dev/null || true
+
+      - name: Verify package contents
+        run: |
+          for deb in artifacts/*.deb; do
+            echo "=== $deb ==="
+            dpkg-deb --info "$deb" | head -20
+            echo "--- contents ---"
+            dpkg-deb --contents "$deb"
+          done
+
+      - name: Upload .deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: artifacts/*.deb
+
   release:
     name: Release (on tag)
-    needs: [format-check, build-and-test]
+    needs: [format-check, build-and-test, deb-package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
@@ -105,7 +155,7 @@ jobs:
         run: |
           meson setup build --buildtype=release -Dtests=disabled
           meson compile -C build
-      - name: Package
+      - name: Package tarball
         run: |
           arch=$(uname -m)
           mkdir -p dist/sbin dist/lib/systemd/system dist/etc/jlu-drcom-authd
@@ -113,6 +163,22 @@ jobs:
           cp systemd/jlu-drcom-authd.service systemd/jlu-drcom-authd@.service dist/lib/systemd/system/
           cp systemd/jlu-drcom-authd.conf.example dist/etc/jlu-drcom-authd/
           tar -czf jlu-drcom-authd-${{ github.ref_name }}-${arch}.tar.gz -C dist .
+      - name: Download amd64 .deb
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-amd64
+          path: debs-amd64
+      - name: Download arm64 .deb
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-arm64
+          path: debs-arm64
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          cp jlu-drcom-authd-*.tar.gz release/
+          cp debs-amd64/*.deb release/jlu-drcom-authd_${{ github.ref_name }}_amd64.deb 2>/dev/null || true
+          cp debs-arm64/*.deb release/jlu-drcom-authd_${{ github.ref_name }}_arm64.deb 2>/dev/null || true
       - uses: softprops/action-gh-release@v2
         with:
-          files: jlu-drcom-authd-${{ github.ref_name }}-*.tar.gz
+          files: release/*

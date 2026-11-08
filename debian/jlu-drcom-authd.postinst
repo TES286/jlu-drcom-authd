@@ -1,0 +1,41 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# postinst: create the drcom system group/user and ensure config dir exists.
+
+set -e
+
+case "$1" in
+    configure)
+        # Create a dedicated system user/group for the daemon.
+        # The daemon runs as root (it needs raw netlink + UDP to auth
+        # server), but the user/group is useful for log/state file
+        # ownership if the admin restricts the unit further.
+        if ! getent group jlu-drcom >/dev/null 2>&1; then
+            addgroup --system --quiet jlu-drcom
+        fi
+        if ! getent passwd jlu-drcom >/dev/null 2>&1; then
+            adduser --system --quiet --ingroup jlu-drcom \
+                --home /var/lib/jlu-drcom-authd \
+                --no-create-home \
+                --shell /usr/sbin/nologin \
+                jlu-drcom
+        fi
+
+        # Ensure config directory exists with safe permissions.
+        install -d -m 0750 -o root -g root /etc/jlu-drcom-authd
+
+        # Install default config if none exists.
+        if [ ! -f /etc/jlu-drcom-authd/jlu-drcom-authd.conf ]; then
+            cp /usr/share/doc/jlu-drcom-authd/jlu-drcom-authd.conf.example \
+               /etc/jlu-drcom-authd/jlu-drcom-authd.conf 2>/dev/null || true
+            chmod 0640 /etc/jlu-drcom-authd/jlu-drcom-authd.conf
+        fi
+
+        # Trigger tmpfiles to create runtime/state/log dirs.
+        systemd-tmpfiles --create /usr/lib/tmpfiles.d/jlu-drcom-authd.conf 2>/dev/null || true
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

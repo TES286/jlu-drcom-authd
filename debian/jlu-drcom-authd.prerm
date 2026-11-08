@@ -1,0 +1,18 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# prerm: stop the service before removal.
+
+set -e
+
+case "$1" in
+    remove|deconfigure|failed-upgrade)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop jlu-drcom-authd.service 2>/dev/null || true
+            systemctl stop jlu-drcom-authd@*.service 2>/dev/null || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

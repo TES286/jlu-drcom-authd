@@ -29,3 +29,19 @@ Thumbs.db
 /tests/e2e/*.log
 /tests/e2e/__pycache__/
 /tests/e2e/.pytest_cache/
+
+# Debian packaging artifacts
+/.debhelper/
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/jlu-drcom-authd/
+/debian/jlu-drcom-authd*.deb
+/debian/jlu-drcom-authd*.buildinfo
+/debian/jlu-drcom-authd*.changes
+/debian/tmp/
+/debian/substvars
+/*.deb
+/*.buildinfo
+/*.changes
+/obj-*/

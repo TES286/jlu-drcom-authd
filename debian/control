@@ -1,0 +1,33 @@
+Source: jlu-drcom-authd
+Section: net
+Priority: optional
+Maintainer: TES286 <tes286@tes286.top>
+Build-Depends:
+ debhelper-compat (= 13),
+ meson,
+ ninja-build,
+ pkg-config,
+ libsystemd-dev,
+Standards-Version: 4.7.0
+Homepage: https://github.com/TES286/jlu-drcom-authd
+Rules-Requires-Root: no
+
+Package: jlu-drcom-authd
+Architecture: linux-any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ adduser,
+Description: systemd-native Drcom authentication daemon for JLU
+ A lightweight Drcom authentication daemon designed for the Jilin
+ University campus network.  Written in C17 with first-class sd_event,
+ sd_journal, and sd_daemon integration, and tuned for arm64 (with amd64
+ as a fully supported secondary target).
+ .
+ Key features:
+  * Type=notify systemd service with watchdog, hardened unit files
+  * Runtime CPU feature detection (getauxval/AT_HWCAP) for portable
+    arm64 binaries with NEON fast paths
+  * rtnetlink link-state monitoring: reacts to interface up/down in ~1ms
+  * No heavyweight dependencies beyond libsystemd
+  * INI-style configuration with password-file support

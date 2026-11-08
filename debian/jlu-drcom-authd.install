@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Extra files not installed by meson's install target.
+# meson installs:
+#   /usr/sbin/jlu-drcom-authd
+#   /lib/systemd/system/jlu-drcom-authd.service
+#   /lib/systemd/system/jlu-drcom-authd@.service
+#   /etc/jlu-drcom-authd/jlu-drcom-authd.conf.example
+# We also want the example config in /usr/share/doc for the postinst to copy.
+
+usr/sbin/jlu-drcom-authd sbin/
+lib/systemd/system/jlu-drcom-authd.service
+lib/systemd/system/jlu-drcom-authd@.service
+etc/jlu-drcom-authd/jlu-drcom-authd.conf.example usr/share/doc/jlu-drcom-authd/

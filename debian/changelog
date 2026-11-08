@@ -1,0 +1,7 @@
+jlu-drcom-authd (0.1.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Features: systemd-native daemon, runtime CPU feature detection,
+    rtnetlink link-state monitoring, arm64 NEON checksum fast path.
+
+ -- TES286 <tes286@tes286.top>  Sat, 08 Nov 2026 00:00:00 +0800
