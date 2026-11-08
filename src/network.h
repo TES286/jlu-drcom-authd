@@ -11,27 +11,28 @@
 #ifndef DRCOM_NETWORK_H
 #define DRCOM_NETWORK_H
 
+#include <netinet/in.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct {
-    int                fd;
-    struct sockaddr_in server;
-    unsigned           recv_timeout_ms;
+	int fd;
+	struct sockaddr_in server;
+	unsigned recv_timeout_ms;
 } drcom_net_t;
 
 /**
  * Create a UDP socket, bind to ephemeral port, connect to @p server:port.
  * @return 0 on success, negative errno on failure.
  */
-int drcom_net_open(drcom_net_t *n, const struct sockaddr_in *server,
-                   unsigned recv_timeout_ms);
+int drcom_net_open(drcom_net_t *n,
+				   const struct sockaddr_in *server,
+				   unsigned recv_timeout_ms);
 
 /** Send @p len bytes.  Returns 0 on success, negative errno on failure. */
 int drcom_net_send(drcom_net_t *n, const uint8_t *buf, size_t len);

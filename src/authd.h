@@ -18,23 +18,24 @@
 #ifndef DRCOM_AUTHD_H
 #define DRCOM_AUTHD_H
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <systemd/sd-event.h>
-
 #include "appconf.h"
 #include "network.h"
 #include "protocol.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <systemd/sd-event.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef enum {
-    DRCOM_STATE_INIT = 0,    /* fresh; not yet challenged */
-    DRCOM_STATE_ONLINE,      /* logged in, keepalive running */
-    DRCOM_STATE_LOGGING_OUT, /* logout in flight */
-    DRCOM_STATE_STOPPED,     /* terminal */
+	DRCOM_STATE_INIT = 0,	 /* fresh; not yet challenged */
+	DRCOM_STATE_ONLINE,		 /* logged in, keepalive running */
+	DRCOM_STATE_LOGGING_OUT, /* logout in flight */
+	DRCOM_STATE_STOPPED,	 /* terminal */
 } drcom_state_t;
 
 typedef struct drcom_authd drcom_authd_t;
@@ -42,8 +43,7 @@ typedef struct drcom_authd drcom_authd_t;
 typedef void (*drcom_status_cb_t)(void *userdata, drcom_state_t state);
 
 /** Allocate a new authd instance.  Returns NULL on OOM. */
-drcom_authd_t *drcom_authd_new(const drcom_appconf_t *conf,
-                                sd_event *event);
+drcom_authd_t *drcom_authd_new(const drcom_appconf_t *conf, sd_event *event);
 
 void drcom_authd_free(drcom_authd_t *a);
 
@@ -62,8 +62,7 @@ drcom_state_t drcom_authd_state(const drcom_authd_t *a);
 const char *drcom_authd_status(const drcom_authd_t *a);
 
 /** Set a callback invoked on every state transition. */
-void drcom_authd_set_status_cb(drcom_authd_t *a, drcom_status_cb_t cb,
-                                void *userdata);
+void drcom_authd_set_status_cb(drcom_authd_t *a, drcom_status_cb_t cb, void *userdata);
 
 #ifdef __cplusplus
 }

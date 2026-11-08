@@ -22,30 +22,41 @@ extern "C" {
 #endif
 
 #define DRCOM_MD5_DIGEST_SIZE 16
-#define DRCOM_CHECKSUM_SIZE    4
-#define DRCOM_CRC_SIZE         4
+#define DRCOM_CHECKSUM_SIZE 4
+#define DRCOM_CRC_SIZE 4
 
 /** MD5 digest of the concatenation of all variadic buffers. */
 void drcom_md5_multi(uint8_t out[DRCOM_MD5_DIGEST_SIZE],
-                     const uint8_t *const *parts, const size_t *lens, size_t n);
+					 const uint8_t *const *parts,
+					 const size_t *lens,
+					 size_t n);
 
 /** Convenience two-part MD5. */
 void drcom_md5_2(uint8_t out[DRCOM_MD5_DIGEST_SIZE],
-                 const uint8_t *a, size_t a_len,
-                 const uint8_t *b, size_t b_len);
+				 const uint8_t *a,
+				 size_t a_len,
+				 const uint8_t *b,
+				 size_t b_len);
 
 /** Convenience three-part MD5. */
 void drcom_md5_3(uint8_t out[DRCOM_MD5_DIGEST_SIZE],
-                 const uint8_t *a, size_t a_len,
-                 const uint8_t *b, size_t b_len,
-                 const uint8_t *c, size_t c_len);
+				 const uint8_t *a,
+				 size_t a_len,
+				 const uint8_t *b,
+				 size_t b_len,
+				 const uint8_t *c,
+				 size_t c_len);
 
 /** Convenience four-part MD5. */
 void drcom_md5_4(uint8_t out[DRCOM_MD5_DIGEST_SIZE],
-                 const uint8_t *a, size_t a_len,
-                 const uint8_t *b, size_t b_len,
-                 const uint8_t *c, size_t c_len,
-                 const uint8_t *d, size_t d_len);
+				 const uint8_t *a,
+				 size_t a_len,
+				 const uint8_t *b,
+				 size_t b_len,
+				 const uint8_t *c,
+				 size_t c_len,
+				 const uint8_t *d,
+				 size_t d_len);
 
 /**
  * ror(md5a, password) - per-byte rotate left by 3 of (md5a[i] ^ password[i]).
@@ -57,8 +68,9 @@ void drcom_md5_4(uint8_t out[DRCOM_MD5_DIGEST_SIZE],
  * @param pass_len  Password length (capped to 16 by the caller).
  */
 void drcom_ror(uint8_t *out,
-               const uint8_t md5a[DRCOM_MD5_DIGEST_SIZE],
-               const uint8_t *pass, size_t pass_len);
+			   const uint8_t md5a[DRCOM_MD5_DIGEST_SIZE],
+			   const uint8_t *pass,
+			   size_t pass_len);
 
 /**
  * Drcom checksum.  See protocol doc.
@@ -70,15 +82,13 @@ void drcom_ror(uint8_t *out,
  * @param data  Input buffer; length need not be a multiple of 4.
  * @param len   Input length.
  */
-void drcom_checksum(uint8_t out[DRCOM_CHECKSUM_SIZE],
-                    const uint8_t *data, size_t len);
+void drcom_checksum(uint8_t out[DRCOM_CHECKSUM_SIZE], const uint8_t *data, size_t len);
 
 /**
  * Drcom CRC (used in keep40_2).  XORs 2-byte groups, multiplies by 711,
  * emits the low 4 bytes little-endian.
  */
-void drcom_crc(uint8_t out[DRCOM_CRC_SIZE],
-               const uint8_t *data, size_t len);
+void drcom_crc(uint8_t out[DRCOM_CRC_SIZE], const uint8_t *data, size_t len);
 
 /** Fill the buffer with cryptographically secure random bytes via getrandom(2). */
 void drcom_random(uint8_t *out, size_t len);

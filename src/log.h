@@ -22,21 +22,20 @@ extern "C" {
 void drcom_log_init(const char *identifier, int min_level, bool foreground);
 void drcom_log_close(void);
 
-void drcom_log(int level, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+void drcom_log(int level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 void drcom_vlog(int level, const char *fmt, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+	__attribute__((format(printf, 2, 0)));
 
 /* Convenience macros that capture call site automatically. */
-#define drcom_log_emerg(...)   drcom_log(DRCOM_LOG_LEVEL_EMERG, __VA_ARGS__)
-#define drcom_log_alert(...)   drcom_log(DRCOM_LOG_LEVEL_ALERT, __VA_ARGS__)
-#define drcom_log_crit(...)    drcom_log(DRCOM_LOG_LEVEL_CRIT,  __VA_ARGS__)
-#define drcom_log_err(...)     drcom_log(DRCOM_LOG_LEVEL_ERR,   __VA_ARGS__)
-#define drcom_log_warn(...)    drcom_log(DRCOM_LOG_LEVEL_WARN,  __VA_ARGS__)
-#define drcom_log_notice(...)  drcom_log(DRCOM_LOG_LEVEL_NOTICE,__VA_ARGS__)
-#define drcom_log_info(...)    drcom_log(DRCOM_LOG_LEVEL_INFO,  __VA_ARGS__)
-#define drcom_log_debug(...)   drcom_log(DRCOM_LOG_LEVEL_DEBUG, __VA_ARGS__)
+#define drcom_log_emerg(...) drcom_log(DRCOM_LOG_LEVEL_EMERG, __VA_ARGS__)
+#define drcom_log_alert(...) drcom_log(DRCOM_LOG_LEVEL_ALERT, __VA_ARGS__)
+#define drcom_log_crit(...) drcom_log(DRCOM_LOG_LEVEL_CRIT, __VA_ARGS__)
+#define drcom_log_err(...) drcom_log(DRCOM_LOG_LEVEL_ERR, __VA_ARGS__)
+#define drcom_log_warn(...) drcom_log(DRCOM_LOG_LEVEL_WARN, __VA_ARGS__)
+#define drcom_log_notice(...) drcom_log(DRCOM_LOG_LEVEL_NOTICE, __VA_ARGS__)
+#define drcom_log_info(...) drcom_log(DRCOM_LOG_LEVEL_INFO, __VA_ARGS__)
+#define drcom_log_debug(...) drcom_log(DRCOM_LOG_LEVEL_DEBUG, __VA_ARGS__)
 
 #ifdef __cplusplus
 }

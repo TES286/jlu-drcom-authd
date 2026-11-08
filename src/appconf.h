@@ -10,11 +10,11 @@
 #ifndef DRCOM_APPCONF_H
 #define DRCOM_APPCONF_H
 
+#include "protocol.h" /* for DRCOM_USERNAME_MAX / PASSWORD_MAX / HOSTNAME_MAX */
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
-#include "protocol.h"  /* for DRCOM_USERNAME_MAX / PASSWORD_MAX / HOSTNAME_MAX */
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,36 +24,36 @@ extern "C" {
 #define DRCOM_IFACE_MAX 16
 
 typedef enum {
-    DRCOM_LOG_LEVEL_EMERG = 0,
-    DRCOM_LOG_LEVEL_ALERT = 1,
-    DRCOM_LOG_LEVEL_CRIT  = 2,
-    DRCOM_LOG_LEVEL_ERR   = 3,
-    DRCOM_LOG_LEVEL_WARN  = 4,
-    DRCOM_LOG_LEVEL_NOTICE= 5,
-    DRCOM_LOG_LEVEL_INFO  = 6,
-    DRCOM_LOG_LEVEL_DEBUG = 7,
+	DRCOM_LOG_LEVEL_EMERG = 0,
+	DRCOM_LOG_LEVEL_ALERT = 1,
+	DRCOM_LOG_LEVEL_CRIT = 2,
+	DRCOM_LOG_LEVEL_ERR = 3,
+	DRCOM_LOG_LEVEL_WARN = 4,
+	DRCOM_LOG_LEVEL_NOTICE = 5,
+	DRCOM_LOG_LEVEL_INFO = 6,
+	DRCOM_LOG_LEVEL_DEBUG = 7,
 } drcom_log_level_t;
 
 typedef struct {
-    /* [Authentication] */
-    char     username[DRCOM_USERNAME_MAX];
-    char     password[DRCOM_PASSWORD_MAX];
-    /** Optional password file path (read once at startup, mode 0600). */
-    char     password_file[256];
+	/* [Authentication] */
+	char username[DRCOM_USERNAME_MAX];
+	char password[DRCOM_PASSWORD_MAX];
+	/** Optional password file path (read once at startup, mode 0600). */
+	char password_file[256];
 
-    /* [Network] */
-    char     server[DRCOM_HOST_MAX];    /* hostname or IP */
-    uint16_t port;                       /* default 61440 */
-    char     interface[DRCOM_IFACE_MAX]; /* optional, auto-detect if empty */
-    uint8_t  mac[6];                    /* explicit override, all-zero = auto */
-    char     hostname[DRCOM_HOSTNAME_MAX];
+	/* [Network] */
+	char server[DRCOM_HOST_MAX];	 /* hostname or IP */
+	uint16_t port;					 /* default 61440 */
+	char interface[DRCOM_IFACE_MAX]; /* optional, auto-detect if empty */
+	uint8_t mac[6];					 /* explicit override, all-zero = auto */
+	char hostname[DRCOM_HOSTNAME_MAX];
 
-    /* [Daemon] */
-    unsigned keepalive_sec;             /* default 20 */
-    unsigned recv_timeout_ms;           /* default 5000 */
-    unsigned restart_backoff_sec;       /* default 5 */
-    int      log_level;                 /* drcom_log_level_t */
-    int      foreground;                /* 1 = do not call daemon(3) */
+	/* [Daemon] */
+	unsigned keepalive_sec;		  /* default 20 */
+	unsigned recv_timeout_ms;	  /* default 5000 */
+	unsigned restart_backoff_sec; /* default 5 */
+	int log_level;				  /* drcom_log_level_t */
+	int foreground;				  /* 1 = do not call daemon(3) */
 } drcom_appconf_t;
 
 /** Reset to defaults. */
@@ -67,12 +67,18 @@ void drcom_appconf_defaults(drcom_appconf_t *c);
  * @param errbuf Optional error buffer (256 bytes).
  * @return 0 on success, negative errno-style code on failure.
  */
-int drcom_appconf_load(drcom_appconf_t *c, const char *path, char *errbuf, size_t errbuf_sz);
+int drcom_appconf_load(drcom_appconf_t *c,
+					   const char *path,
+					   char *errbuf,
+					   size_t errbuf_sz);
 
 /** Parse a single 'Key = Value' line in the context of the current section. */
-int drcom_appconf_set(drcom_appconf_t *c, const char *section,
-                      const char *key, const char *value,
-                      char *errbuf, size_t errbuf_sz);
+int drcom_appconf_set(drcom_appconf_t *c,
+					  const char *section,
+					  const char *key,
+					  const char *value,
+					  char *errbuf,
+					  size_t errbuf_sz);
 
 /** Resolve environment overrides on top of an existing config. */
 void drcom_appconf_apply_env(drcom_appconf_t *c);
