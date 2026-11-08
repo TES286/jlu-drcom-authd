@@ -9,10 +9,18 @@
  * dependency, and lets us tune the inner loop for arm64 (the only ISA the
  * project actually targets as primary).
  *
- * The XOR reductions in drcom_checksum() use NEON on aarch64 to process
+ * The XOR reduction in drcom_checksum() uses NEON on aarch64 to process
  * 16 input bytes per iteration; on every other architecture we fall back
  * to a plain scalar loop that the compiler is free to auto-vectorise.
+ *
+ * NEON availability is detected at RUNTIME via getauxval(AT_HWCAP) (see
+ * cpufeatures.c), not at compile time.  This makes the binary portable
+ * across all aarch64 CPUs: a generic arm64 build runs unchanged on every
+ * SoC, with the NEON fast path enabled when the kernel reports HWCAP_ASIMD.
+ * The intrinsics are compiled in whenever __ARM_NEON is defined (i.e.
+ * targeting aarch64), but only dispatched at runtime.
  */
+#include "cpufeatures.h"
 #include "crypto.h"
 
 #include <errno.h>
@@ -23,9 +31,9 @@
 
 #if defined(__aarch64__) && defined(__ARM_NEON)
 #include <arm_neon.h>
-#define DRCOM_HAVE_NEON 1
+#define DRCOM_CAN_NEON 1 /* intrinsics are available; runtime-gated */
 #else
-#define DRCOM_HAVE_NEON 0
+#define DRCOM_CAN_NEON 0
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -263,7 +271,7 @@ static inline void checksum_xorscalar(uint8_t sum[4], const uint8_t *data, size_
 	}
 }
 
-#if DRCOM_HAVE_NEON
+#if DRCOM_CAN_NEON
 static inline void checksum_xor_neon(uint8_t sum[4], const uint8_t *data, size_t len)
 {
 	/* Initialise lane 0 with the 4-byte init pattern (big-endian 1234 =
@@ -303,11 +311,12 @@ void drcom_checksum(uint8_t out[DRCOM_CHECKSUM_SIZE], const uint8_t *data, size_
 	uint8_t sum[4];
 	__builtin_memcpy(sum, k_checksum_init, 4);
 
-#if DRCOM_HAVE_NEON
-	checksum_xor_neon(sum, data, len);
-#else
-	checksum_xorscalar(sum, data, len);
+#if DRCOM_CAN_NEON
+	if (drcom_cpufeatures_neon())
+		checksum_xor_neon(sum, data, len);
+	else
 #endif
+		checksum_xorscalar(sum, data, len);
 
 	uint32_t val = ((uint32_t)sum[0] << 24) | ((uint32_t)sum[1] << 16) |
 				   ((uint32_t)sum[2] << 8) | ((uint32_t)sum[3]);
