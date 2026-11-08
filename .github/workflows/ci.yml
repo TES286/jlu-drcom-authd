@@ -1,0 +1,149 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CI for jlu-drcom-authd.
+#
+# Builds and tests the project on amd64 (native) and arm64 (via QEMU
+# cross-compile + test under qemu-user).  Uploads build logs and test
+# results as artifacts.
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & test (${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            triplet: x86_64-linux-gnu
+            runner: ubuntu-24.04
+            qemu: ''
+          - arch: arm64
+            triplet: aarch64-linux-gnu
+            runner: ubuntu-24.04-arm
+            qemu: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config \
+            libsystemd-dev python3
+          if [ "${{ matrix.arch }}" = "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
+            sudo apt-get install -y --no-install-recommends \
+              gcc-aarch64-linux-gnu \
+              libsystemd-dev:arm64
+            sudo dpkg --add-architecture arm64
+            sudo apt-get update || true
+          fi
+
+      - name: Configure (native)
+        if: matrix.arch == 'amd64' || runner.arch == 'ARM64'
+        run: |
+          meson setup build \
+            --werror \
+            -Dtests=enabled \
+            -Db_lto=true
+
+      - name: Configure (cross arm64)
+        if: matrix.arch == 'arm64' && runner.arch != 'ARM64'
+        run: |
+          cat > /tmp/aarch64.ini <<EOF
+          [binaries]
+          c = 'aarch64-linux-gnu-gcc'
+          ar = 'aarch64-linux-gnu-ar'
+          strip = 'aarch64-linux-gnu-strip'
+          pkgconfig = 'aarch64-linux-gnu-pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+          meson setup build \
+            --cross-file /tmp/aarch64.ini \
+            --werror \
+            -Dtests=enabled \
+            -Db_lto=true
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run unit tests
+        if: matrix.arch == 'amd64' || runner.arch == 'ARM64'
+        run: meson test -C build --print-errorlogs --suite=not_e2e || \
+              meson test -C build --print-errorlogs
+
+      - name: Run E2E test
+        if: matrix.arch == 'amd64' || runner.arch == 'ARM64'
+        run: meson test -C build --print-errorlogs --suite=e2e
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.arch }}
+          path: |
+            build/meson-logs/
+            build/testlog.txt
+
+  format-check:
+    name: clang-format check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get install -y --no-install-recommends clang-format
+      - name: Check formatting
+        run: |
+          if ! git diff --name-only HEAD | grep -E '\.(c|h)$'; then
+            echo "no C files changed, skipping"
+            exit 0
+          fi
+          clang-format --dry-run --Werror $(git ls-files '*.c' '*.h')
+
+  release:
+    name: Release (on tag)
+    needs: [build-and-test, format-check]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config libsystemd-dev
+      - name: Build release
+        run: |
+          meson setup build --buildtype=release -Dtests=disabled
+          meson compile -C build
+      - name: Package
+        run: |
+          mkdir -p dist/sbin dist/lib/systemd/system dist/etc/jlu-drcom-authd
+          cp build/jlu-drcom-authd dist/sbin/
+          cp systemd/jlu-drcom-authd.service systemd/jlu-drcom-authd@.service dist/lib/systemd/system/
+          cp systemd/jlu-drcom-authd.conf.example dist/etc/jlu-drcom-authd/
+          tar -czf jlu-drcom-authd-${{ github.ref_name }}-amd64.tar.gz -C dist .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: jlu-drcom-authd-${{ github.ref_name }}-amd64.tar.gz

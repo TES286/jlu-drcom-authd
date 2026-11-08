@@ -1,0 +1,20 @@
+option(
+    'systemdsystemunitdir',
+    type : 'string',
+    value : '',
+    description : 'Path to systemd system unit directory (auto-detected when empty)',
+)
+
+option(
+    'tests',
+    type : 'feature',
+    value : 'enabled',
+    description : 'Build unit and end-to-end tests',
+)
+
+option(
+    'asan',
+    type : 'boolean',
+    value : false,
+    description : 'Enable AddressSanitizer (debug builds only)',
+)
