@@ -266,27 +266,29 @@ static inline void checksum_xorscalar(uint8_t sum[4], const uint8_t *data, size_
 #if DRCOM_HAVE_NEON
 static inline void checksum_xor_neon(uint8_t sum[4], const uint8_t *data, size_t len)
 {
-	/* Replicate the 4-byte init pattern across all 4 lanes of a 16-byte
-	 * vector.  vld1q_dup_u32 loads one 32-bit value and broadcasts it. */
-	uint8x16_t v_sum =
-		vreinterpretq_u8_u32(vld1q_dup_u32((const uint32_t *)k_checksum_init));
+	/* Initialise lane 0 with the 4-byte init pattern (big-endian 1234 =
+	 * 0x000004d2) and lanes 1..3 with zero.  The horizontal reduction at
+	 * the bottom XORs all four lanes together, so seeding only one lane
+	 * preserves the init value (broadcasting it to all four lanes would
+	 * cancel it out as a ^ a ^ a ^ a == 0). */
+	uint32_t init_val;
+	__builtin_memcpy(&init_val, k_checksum_init, sizeof(init_val));
+	uint32x4_t v_sum = vsetq_lane_u32(init_val, vdupq_n_u32(0), 0);
 
 	size_t i = 0;
 	for (; i + 16 <= len; i += 16) {
 		uint8x16_t v = vld1q_u8(data + i);
 		/* Reverse bytes within each 4-byte group: d0..d3 -> d3..d0. */
 		v = vrev32q_u8(v);
-		v_sum = veorq_u8(v_sum, v);
+		v_sum = veorq_u32(v_sum, vreinterpretq_u32_u8(v));
 	}
-	/* Horizontal reduction: 16 bytes -> 4 bytes (XOR the four 32-bit
-	 * lanes together).  vextq shifts the vector; we XOR twice. */
-	uint8x16_t hi = vextq_u8(v_sum, v_sum, 8);
-	v_sum = veorq_u8(v_sum, hi);
-	uint8x16_t mid = vextq_u8(v_sum, v_sum, 4);
-	v_sum = veorq_u8(v_sum, mid);
+	/* Horizontal reduction: XOR the four 32-bit lanes into lane 0. */
+	uint32x4_t hi = vextq_u32(v_sum, v_sum, 2);
+	v_sum = veorq_u32(v_sum, hi);
+	uint32x4_t mid = vextq_u32(v_sum, v_sum, 1);
+	v_sum = veorq_u32(v_sum, mid);
 
-	uint32_t lane;
-	vst1q_lane_u32(&lane, vreinterpretq_u32_u8(v_sum), 0);
+	uint32_t lane = vgetq_lane_u32(v_sum, 0);
 	__builtin_memcpy(sum, &lane, 4);
 
 	/* Tail in scalar. */
