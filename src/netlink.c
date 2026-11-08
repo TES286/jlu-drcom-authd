@@ -25,9 +25,11 @@
 #include <linux/if_link.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <linux/sockios.h> /* SIOCGIFFLAGS */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h> /* ioctl() */
 #include <sys/socket.h>
 #include <unistd.h>
 
