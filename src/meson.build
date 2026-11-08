@@ -11,10 +11,12 @@ config_h = configure_file(
 inc = include_directories('.')
 
 lib_sources = files(
+    'cpufeatures.c',
     'crypto.c',
     'protocol.c',
     'appconf.c',
     'network.c',
+    'netlink.c',
     'util.c',
     'log.c',
     'authd.c',

@@ -46,12 +46,12 @@ add_project_arguments(
 libsystemd_dep = dependency('libsystemd', version : '>= 252', required : true)
 systemd_dep    = dependency('systemd',    required : false)
 
-# ARM64 / NEON detection for crypto fast paths.
-host_cpu = host_machine.cpu()
-have_neon = host_cpu == 'aarch64' or host_cpu == 'arm64'
+# CPU feature detection is done at runtime via getauxval(AT_HWCAP)
+# (see src/cpufeatures.c), so no compile-time HAVE_NEON is needed.  This
+# makes the binary portable across all aarch64 CPUs — a generic arm64
+# build runs unchanged on every SoC, with NEON dispatched at runtime.
 
 conf_data = configuration_data()
-conf_data.set10('HAVE_NEON', have_neon)
 conf_data.set_quoted('PACKAGE_VERSION', meson.project_version())
 conf_data.set_quoted('PACKAGE_NAME', meson.project_name())
 
