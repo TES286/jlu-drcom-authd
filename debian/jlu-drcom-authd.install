@@ -1,9 +1,0 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# Files installed by meson's install target into debian/tmp/.
-# Each line: <source-path-in-debian/tmp> [destination-dir]
-# Without a destination, the path is preserved as-is.
-
-usr/sbin/jlu-drcom-authd
-lib/systemd/system/jlu-drcom-authd.service
-lib/systemd/system/jlu-drcom-authd@.service
-etc/jlu-drcom-authd/jlu-drcom-authd.conf.example usr/share/doc/jlu-drcom-authd/
