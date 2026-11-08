@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Default instance of jlu-drcom-authd.  Reads /etc/jlu-drcom-authd/jlu-drcom-authd.conf.
+# Use the template unit (jlu-drcom-authd@.service) for multi-interface deployments.
+
+[Unit]
+Description=JLU Drcom Authentication Daemon
+Documentation=man:jlu-drcom-authd(8)
+After=network-online.target
+Wants=network-online.target
+After=network.target
+Wants=network.target
+# Re-authenticate whenever the link comes back.
+After=network.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+# systemd watchdog: the daemon pings sd_notify("WATCHDOG=1") between
+# network operations; sd_event also feeds the watchdog during the idle
+# phase of the keepalive cycle.
+WatchdogSec=30s
+Restart=on-failure
+RestartSec=5s
+# Bound the restart storm on persistent failure.
+StartLimitBurst=10
+StartLimitIntervalSec=120
+
+# Hardening
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+# State / config directories (managed by systemd-tmpfiles).
+ConfigurationDirectory=jlu-drcom-authd
+StateDirectory=jlu-drcom-authd
+LogsDirectory=jlu-drcom-authd
+RuntimeDirectory=jlu-drcom-authd
+RuntimeDirectoryPreserve=yes
+
+# Read the config from /etc/jlu-drcom-authd/jlu-drcom-authd.conf by default.
+ExecStart=@sbindir@/jlu-drcom-authd --foreground
+# Let sd_event exit on SIGTERM (the daemon already handles it gracefully).
+KillSignal=SIGTERM
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

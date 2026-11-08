@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Sample configuration for jlu-drcom-authd.
+# Copy to /etc/jlu-drcom-authd/jlu-drcom-authd.conf and edit.
+# Lines starting with '#' or ';' are comments.
+
+[Authentication]
+# JLU campus network username (usually the student ID).
+Username = 2023xxxxxx
+# Either set Password directly (mode 0600 on this file!) or use
+# PasswordFile pointing at a 0600-mode file containing just the password.
+# Password = ...
+PasswordFile = /etc/jlu-drcom-authd/password
+
+[Network]
+# Default JLU auth server.  Override only if you know what you are doing.
+Server = auth.jlu.edu.cn
+Port = 61440
+# Optional: pin the interface.  If unset, the daemon picks the first
+# non-loopback UP interface with a hardware MAC.
+# Interface = eth0
+# Optional: pin the MAC.  If unset, auto-detected from the interface.
+# MAC = aa:bb:cc:dd:ee:ff
+# Hostname emitted in the login packet.  Defaults to uname -n.
+
+[Daemon]
+# Keepalive interval (seconds).  The official client uses 20.
+KeepAliveSec = 20
+# Per-recv timeout, in milliseconds.  Lower = faster failure detection.
+RecvTimeoutMs = 5000
+# Backoff before re-authenticating after a keepalive failure.
+RestartBackoffSec = 5
+# syslog-style log level: emerg|alert|crit|err|warning|notice|info|debug
+LogLevel = info
+# Stay in foreground (auto-set under systemd).  Set to true for debugging.
+Foreground = false

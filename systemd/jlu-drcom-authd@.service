@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Template instance: enable as jlu-drcom-authd@<interface>.service to bind
+# the daemon to a specific network interface.  The interface name is
+# passed via DRCOM_INTERFACE and used as the config file suffix, so each
+# instance can have its own /etc/jlu-drcom-authd/jlu-drcom-authd-<iface>.conf.
+
+[Unit]
+Description=JLU Drcom Authentication Daemon (%i)
+Documentation=man:jlu-drcom-authd(8)
+After=network-online.target
+Wants=network-online.target
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30s
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=10
+StartLimitIntervalSec=120
+
+# Hardening (mirrors the non-template unit)
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+ConfigurationDirectory=jlu-drcom-authd
+StateDirectory=jlu-drcom-authd-%i
+LogsDirectory=jlu-drcom-authd-%i
+RuntimeDirectory=jlu-drcom-authd-%i
+RuntimeDirectoryPreserve=yes
+
+# Per-interface config file; falls back to the default if absent.
+Environment=DRCOM_INTERFACE=%i
+Environment=DRCOM_FOREGROUND=1
+ExecStart=@sbindir@/jlu-drcom-authd --foreground \
+    --config=/etc/jlu-drcom-authd/jlu-drcom-authd-%i.conf \
+    --interface=%i
+
+KillSignal=SIGTERM
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
