@@ -41,8 +41,10 @@ typedef struct drcom_netlink drcom_netlink_t;
  *                 carrier (IFF_UP | IFF_LOWER_UP).  False otherwise.
  * @param userdata Caller-supplied opaque pointer.
  */
-typedef void (*drcom_link_cb_t)(int ifindex, const char *ifname,
-                                bool link_up, void *userdata);
+typedef void (*drcom_link_cb_t)(int ifindex,
+								const char *ifname,
+								bool link_up,
+								void *userdata);
 
 /**
  * Open a netlink route socket, subscribe to link notifications, and
@@ -54,8 +56,10 @@ typedef void (*drcom_link_cb_t)(int ifindex, const char *ifname,
  * @param userdata Opaque pointer passed to @p cb.
  * @return 0 on success, negative errno on failure.
  */
-int drcom_netlink_new(drcom_netlink_t **nl, sd_event *event,
-                      drcom_link_cb_t cb, void *userdata);
+int drcom_netlink_new(drcom_netlink_t **nl,
+					  sd_event *event,
+					  drcom_link_cb_t cb,
+					  void *userdata);
 
 void drcom_netlink_free(drcom_netlink_t *nl);
 

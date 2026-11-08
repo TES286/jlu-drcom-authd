@@ -32,13 +32,13 @@
 #endif
 
 typedef struct {
-        bool neon;
-        bool crc32;
-        bool aes;
-        bool sha1;
-        bool sha2;
-        bool pmull;
-        bool initialised;
+	bool neon;
+	bool crc32;
+	bool aes;
+	bool sha1;
+	bool sha2;
+	bool pmull;
+	bool initialised;
 } cpufeatures_cache;
 
 static cpufeatures_cache g_cache;
@@ -66,31 +66,31 @@ static cpufeatures_cache g_cache;
 
 static void probe(cpufeatures_cache *c)
 {
-        unsigned long hwcap = getauxval(AT_HWCAP);
-        c->neon = (hwcap & HWCAP_ASIMD) != 0;
-        c->crc32 = (hwcap & HWCAP_CRC32) != 0;
-        c->aes = (hwcap & HWCAP_AES) != 0;
-        c->sha1 = (hwcap & HWCAP_SHA1) != 0;
-        c->sha2 = (hwcap & HWCAP_SHA2) != 0;
-        c->pmull = (hwcap & HWCAP_PMULL) != 0;
+	unsigned long hwcap = getauxval(AT_HWCAP);
+	c->neon = (hwcap & HWCAP_ASIMD) != 0;
+	c->crc32 = (hwcap & HWCAP_CRC32) != 0;
+	c->aes = (hwcap & HWCAP_AES) != 0;
+	c->sha1 = (hwcap & HWCAP_SHA1) != 0;
+	c->sha2 = (hwcap & HWCAP_SHA2) != 0;
+	c->pmull = (hwcap & HWCAP_PMULL) != 0;
 }
 
 #else /* !DRCOM_CPU_AARCH64 */
 
 static void probe(cpufeatures_cache *c)
 {
-        /* On non-aarch64 platforms no optional ARM features are available. */
-        memset(c, 0, sizeof(*c));
+	/* On non-aarch64 platforms no optional ARM features are available. */
+	memset(c, 0, sizeof(*c));
 }
 
 #endif
 
 void drcom_cpufeatures_init(void)
 {
-        if (g_cache.initialised)
-                return;
-        probe(&g_cache);
-        g_cache.initialised = true;
+	if (g_cache.initialised)
+		return;
+	probe(&g_cache);
+	g_cache.initialised = true;
 }
 
 /* Each accessor lazily initialises on first call so callers that forget
@@ -98,42 +98,42 @@ void drcom_cpufeatures_init(void)
  * single atomic check per call). */
 bool drcom_cpufeatures_neon(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.neon;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.neon;
 }
 
 bool drcom_cpufeatures_crc32(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.crc32;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.crc32;
 }
 
 bool drcom_cpufeatures_aes(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.aes;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.aes;
 }
 
 bool drcom_cpufeatures_sha1(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.sha1;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.sha1;
 }
 
 bool drcom_cpufeatures_sha2(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.sha2;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.sha2;
 }
 
 bool drcom_cpufeatures_pmull(void)
 {
-        if (!g_cache.initialised)
-                drcom_cpufeatures_init();
-        return g_cache.pmull;
+	if (!g_cache.initialised)
+		drcom_cpufeatures_init();
+	return g_cache.pmull;
 }
