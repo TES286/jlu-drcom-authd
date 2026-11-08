@@ -19,12 +19,22 @@ watchdog, sends structured journal entries, exposes live status via
   operations to survive slow server replies.
 * **Hardened unit files.** `NoNewPrivileges`, `ProtectSystem=strict`,
   `MemoryDenyWriteExecute`, `SystemCallFilter=@system-service`, capability
-  bounding set empty, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`,
+  bounding set empty, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK`,
   and a 30 s watchdog.  Both a default instance and a template
   (`jlu-drcom-authd@<iface>.service`) are provided for multi-interface
   deployments.
+* **Runtime CPU feature detection.** Uses `getauxval(AT_HWCAP)` to probe
+  for NEON/ASIMD, CRC32, AES, SHA, PMULL at runtime.  A single generic
+  arm64 binary runs on every aarch64 SoC, with the NEON fast path
+  dispatched only when the kernel reports `HWCAP_ASIMD`.  No compile-time
+  `-march` flags required.
+* **Link state monitoring.** Subscribes to rtnetlink `RTMGRP_LINK` and
+  reacts to interface up/down events in ~1 ms — closing the UDP socket
+  immediately on link-down and re-authenticating on link-up, instead of
+  waiting for a keepalive timeout (up to 20 s).  Integrated into the
+  `sd_event` loop as a non-blocking IO source.
 * **arm64 tuning.** `drcom_checksum()` uses NEON `vrev32q_u8` +
-  `veorq_u8` to fold 16 input bytes per iteration on aarch64; the amd64
+  `veorq_u32` to fold 16 input bytes per iteration on aarch64; the amd64
   fallback is a plain scalar loop that the compiler is free to
   auto-vectorise.  All multi-byte field accesses are little-endian
   loads/stores via `__builtin_memcpy`, which both gcc and clang turn into
@@ -36,22 +46,56 @@ watchdog, sends structured journal entries, exposes live status via
 * **Modern C17.** Designated initialisers, `bool`, fixed-size field
   types, `static_assert`-friendly layout, no VLAs, no implicit
   declarations, strict-prototype warnings enabled.
-* **Tested.** Unit tests for the crypto and protocol modules cover RFC
-  1321 MD5 vectors, hand-computed checksum/CRC outputs, and packet
-  structural invariants.  An end-to-end test runs the daemon against a
-  Python mock Drcom server (in `tests/e2e/`) that implements the full
-  protocol, and verifies the challenge/login/keepalive/logout sequence.
-* **CI/CD.** GitHub Actions build matrix runs native amd64 and arm64
-  (via QEMU cross-compile), runs unit + e2e tests, and produces a
-  release tarball on tag push.
+* **Tested.** Unit tests for the crypto, protocol, cpufeatures, netlink
+  and config modules cover RFC 1321 MD5 vectors, hand-computed
+  checksum/CRC outputs, packet structural invariants, runtime CPU
+  feature probing, and netlink link-state queries.  An end-to-end test
+  runs the daemon against a Python mock Drcom server (in `tests/e2e/`)
+  that implements the full protocol, and verifies the
+  challenge/login/keepalive/logout sequence.
+* **Debian packaging.** `debian/` directory with `debhelper-compat 13`
+  and `meson+ninja` build system.  CI produces `.deb` packages for both
+  amd64 and arm64.
+* **CI/CD.** GitHub Actions build matrix runs native amd64 and arm64,
+  runs unit + e2e tests, builds `.deb` packages, and publishes a
+  release tarball + debs on tag push.
 
-## Building
+## Building from source
 
 ```sh
 meson setup build
 meson compile -C build
 meson test -C build           # unit + e2e tests
 sudo meson install -C build   # installs binary + unit files
+```
+
+## Installing from .deb
+
+Pre-built `.deb` packages for amd64 and arm64 are published on the
+[releases page](https://github.com/TES286/jlu-drcom-authd/releases).
+Download and install:
+
+```sh
+sudo apt install ./jlu-drcom-authd_0.1.0-1_<arch>.deb
+```
+
+The package installs the binary (`/usr/sbin/jlu-drcom-authd`), systemd
+units, example config, and a `tmpfiles.d` snippet that creates
+`/etc/jlu-drcom-authd/`, `/var/lib/jlu-drcom-authd/`, and
+`/var/log/jlu-drcom-authd/` with safe permissions.  Edit
+`/etc/jlu-drcom-authd/jlu-drcom-authd.conf` to set your credentials, then:
+
+```sh
+sudo systemctl enable --now jlu-drcom-authd
+```
+
+### Building .deb from source
+
+```sh
+sudo apt install build-essential meson ninja-build pkg-config \
+    libsystemd-dev debhelper dpkg-dev
+dpkg-buildpackage -us -uc -b
+# Output: ../jlu-drcom-authd_0.1.0-1_<arch>.deb
 ```
 
 Build options (override with `-D`):
@@ -165,10 +209,40 @@ login, keepalive cycle, logout): the Drcom wire protocol is strictly
 request/response with bounded timeouts, so blocking `recv(2)` with
 `SO_RCVTIMEO` is simpler and faster than wiring every recv into
 `sd_event` IO sources.  `sd_event` still drives the outer loop: the
-keepalive timer, signal handlers, and the systemd watchdog all live in
-the event loop.  Between network operations we feed the watchdog
-manually via `sd_notify("WATCHDOG=1")` so a slow server cannot trigger
-a spurious kill.
+keepalive timer, signal handlers, netlink IO source, and the systemd
+watchdog all live in the event loop.  Between network operations we feed
+the watchdog manually via `sd_notify("WATCHDOG=1")` so a slow server
+cannot trigger a spurious kill.
+
+### Link state monitoring
+
+When an interface name is configured (either explicitly or via
+auto-detection), the daemon opens a `NETLINK_ROUTE` socket subscribed to
+`RTMGRP_LINK` and registers it as an `sd_event` IO source.  On
+`RTM_NEWLINK`/`RTM_DELLINK` notifications, it checks whether the
+watched interface's `IFF_UP | IFF_LOWER_UP` flags changed:
+
+* **Link down**: closes the UDP socket immediately, pauses keepalive
+  (the timer stays armed but skips), and sets state to `initializing`.
+* **Link up**: schedules a deferred re-authentication (challenge +
+  login) on the next event loop iteration.  Using `sd_event_add_defer`
+  avoids blocking the netlink IO callback during the network round-trip.
+
+This cuts recovery time from a keepalive timeout (~20 s) to ~1 ms.
+
+### Runtime CPU feature detection
+
+At startup, `drcom_cpufeatures_init()` calls `getauxval(AT_HWCAP)` to
+read the auxiliary vector populated by the kernel.  The result is cached
+in a singleton and queried by the crypto module on every `drcom_checksum()`
+call.  On aarch64, `HWCAP_ASIMD` (NEON) is checked; on other
+architectures the accessors unconditionally return false.
+
+This replaces the previous compile-time `HAVE_NEON` macro, making a
+single generic arm64 binary portable across all aarch64 SoCs — from
+Cortex-A53 (Raspberry Pi 3) to Neoverse N1 (Graviton2) — with the NEON
+fast path enabled when available and the scalar fallback used
+otherwise.
 
 ## Testing
 
@@ -176,6 +250,8 @@ a spurious kill.
 
 Located in `tests/unit/`:
 
+* `test_cpufeatures.c` — verifies `getauxval` probing: NEON must be
+  detected on aarch64, no features on amd64.
 * `test_crypto.c` — RFC 1321 MD5 vectors, hand-computed checksum/CRC
   outputs (verified against a Python port of the Java reference
   algorithm), `ror` correctness.
@@ -183,6 +259,8 @@ Located in `tests/unit/`:
   length formulas, field offsets.
 * `test_appconf.c` — config parser: defaults, quoted values, MAC
   formats, password-file resolution, unknown-key tolerance.
+* `test_netlink.c` — `drcom_netlink_query_link()` against `lo` and
+  nonexistent interfaces; `drcom_netlink_new/free()` lifecycle.
 
 ### End-to-end test
 
