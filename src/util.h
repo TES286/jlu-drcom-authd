@@ -28,8 +28,31 @@ int drcom_detect_interface(char *ifname, size_t cap, uint8_t mac[6]);
 /** Copy the system hostname (uname(2)) to @p out (capacity @p cap). */
 int drcom_get_hostname(char *out, size_t cap);
 
-/** Resolve a host:port into an IPv4 sockaddr_in.  Returns 0 on success. */
+/** Resolve a host:port into an IPv4 sockaddr_in via the system resolver
+ *  (getaddrinfo).  Returns 0 on success, negative errno on failure. */
 int drcom_resolve_ipv4(const char *host, uint16_t port, struct sockaddr_in *out);
+
+/**
+ * Resolve a host:port into an IPv4 sockaddr_in, with DNS fallback.
+ *
+ * Tries the system resolver (getaddrinfo) first.  If that fails and
+ * @p dns_server is non-NULL, falls back to a direct DNS A-record query
+ * to @p dns_server (useful when the system resolver is unavailable
+ * pre-authentication, e.g. on a campus network that blocks external
+ * DNS until the host is authenticated).
+ *
+ * @param host        Hostname or IP literal.
+ * @param port        Destination port.
+ * @param dns_server  Optional fallback DNS server (NULL = system only).
+ * @param timeout_ms  Timeout for the DNS fallback query.
+ * @param out         Output: resolved sockaddr_in.
+ * @return 0 on success, negative errno on failure.
+ */
+int drcom_resolve_ipv4_with_dns(const char *host,
+								uint16_t port,
+								const struct in_addr *dns_server,
+								unsigned timeout_ms,
+								struct sockaddr_in *out);
 
 /** Hex-dump @p len bytes of @p data to @p out (capacity @p cap).
  *  Returns the number of bytes written (excl. NUL). */

@@ -47,6 +47,10 @@ typedef struct {
 	char interface[DRCOM_IFACE_MAX]; /* optional, auto-detect if empty */
 	uint8_t mac[6];					 /* explicit override, all-zero = auto */
 	char hostname[DRCOM_HOSTNAME_MAX];
+	/** Optional: DNS server to query for resolving Server when the
+	 *  system resolver is unavailable (pre-authentication).  Empty
+	 *  string = use system getaddrinfo(3) only. */
+	char dns_server[DRCOM_HOST_MAX];
 
 	/* [Daemon] */
 	unsigned keepalive_sec;		  /* default 20 */

@@ -5,10 +5,12 @@
  */
 #define _GNU_SOURCE 1
 #include "authd.h"
+#include "dns.h"
 #include "log.h"
 #include "netlink.h"
 #include "util.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <net/if.h>
 #include <stdbool.h>
@@ -317,7 +319,12 @@ static int reauthenticate(drcom_authd_t *a)
 	set_status(a, DRCOM_STATE_INIT);
 
 	struct sockaddr_in srv;
-	if (drcom_resolve_ipv4(a->conf.server, a->conf.port, &srv) < 0) {
+	struct in_addr *dns = NULL;
+	struct in_addr dns_addr;
+	if (a->conf.dns_server[0] && inet_pton(AF_INET, a->conf.dns_server, &dns_addr) == 1)
+		dns = &dns_addr;
+	if (drcom_resolve_ipv4_with_dns(
+			a->conf.server, a->conf.port, dns, DRCOM_DNS_TIMEOUT_MS, &srv) < 0) {
 		drcom_log_err("re-auth: cannot resolve %s", a->conf.server);
 		return -EHOSTUNREACH;
 	}
@@ -661,7 +668,12 @@ int drcom_authd_start(drcom_authd_t *a)
 	}
 
 	struct sockaddr_in srv;
-	int r = drcom_resolve_ipv4(a->conf.server, a->conf.port, &srv);
+	struct in_addr *dns = NULL;
+	struct in_addr dns_addr;
+	if (a->conf.dns_server[0] && inet_pton(AF_INET, a->conf.dns_server, &dns_addr) == 1)
+		dns = &dns_addr;
+	int r = drcom_resolve_ipv4_with_dns(
+		a->conf.server, a->conf.port, dns, DRCOM_DNS_TIMEOUT_MS, &srv);
 	if (r < 0) {
 		drcom_log_err("cannot resolve %s: %s", a->conf.server, strerror(-r));
 		return r;

@@ -153,6 +153,10 @@ int drcom_appconf_set(drcom_appconf_t *c,
 			return copy_str(c->hostname, sizeof(c->hostname), value)
 					   ? set_err(errbuf, errbuf_sz, "hostname too long")
 					   : 0;
+		if (strcmp(key, "DnsServer") == 0)
+			return copy_str(c->dns_server, sizeof(c->dns_server), value)
+					   ? set_err(errbuf, errbuf_sz, "dns server too long")
+					   : 0;
 	} else if (strcmp(section, "Daemon") == 0) {
 		if (strcmp(key, "KeepAliveSec") == 0) {
 			unsigned v;

@@ -22,6 +22,13 @@ Port = 61440
 # Optional: pin the MAC.  If unset, auto-detected from the interface.
 # MAC = aa:bb:cc:dd:ee:ff
 # Hostname emitted in the login packet.  Defaults to uname -n.
+# Optional: DNS server to query for resolving Server when the system
+# resolver is unavailable.  On campus networks the primary DNS often
+# cannot recurse until the host is authenticated, so getaddrinfo(3)
+# fails.  Setting DnsServer to the campus DNS (e.g. 10.10.10.10)
+# lets the daemon resolve the auth server directly via a minimal
+# RFC 1035 DNS client, bypassing /etc/resolv.conf.
+# DnsServer = 10.10.10.10
 
 [Daemon]
 # Keepalive interval (seconds).  The official client uses 20.

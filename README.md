@@ -33,6 +33,14 @@ watchdog, sends structured journal entries, exposes live status via
   immediately on link-down and re-authenticating on link-up, instead of
   waiting for a keepalive timeout (up to 20 s).  Integrated into the
   `sd_event` loop as a non-blocking IO source.
+* **DNS fallback for pre-authentication.** On campus networks the
+  system DNS resolver (via `/etc/resolv.conf`) often cannot recurse
+  until the host is authenticated, so `getaddrinfo(3)` fails to resolve
+  the auth server hostname.  An optional `DnsServer` config setting
+  enables a minimal in-tree RFC 1035 DNS client that sends a direct
+  A-record query to a specified DNS server (e.g. the campus DNS at
+  `10.10.10.10`), bypassing `/etc/resolv.conf` entirely.  The system
+  resolver is tried first; the fallback only activates on failure.
 * **arm64 tuning.** `drcom_checksum()` uses NEON `vrev32q_u8` +
   `veorq_u32` to fold 16 input bytes per iteration on aarch64; the amd64
   fallback is a plain scalar loop that the compiler is free to
@@ -123,6 +131,7 @@ Server = auth.jlu.edu.cn
 Port = 61440
 # Interface = eth0      # auto-detect if unset
 # MAC = aa:bb:cc:dd:ee:ff  # auto-detect if unset
+# DnsServer = 10.10.10.10  # campus DNS for pre-auth fallback
 
 [Daemon]
 KeepAliveSec = 20
@@ -255,10 +264,14 @@ Located in `tests/unit/`:
 * `test_crypto.c` — RFC 1321 MD5 vectors, hand-computed checksum/CRC
   outputs (verified against a Python port of the Java reference
   algorithm), `ror` correctness.
+* `test_dns.c` — DNS name encoding, response parsing (compression
+  pointers, A-record extraction, error handling), and a mock-DNS-server
+  end-to-end transport test.
 * `test_protocol.c` — packet structural invariants: header bytes,
   length formulas, field offsets.
 * `test_appconf.c` — config parser: defaults, quoted values, MAC
-  formats, password-file resolution, unknown-key tolerance.
+  formats, password-file resolution, unknown-key tolerance,
+  cross-field validation.
 * `test_netlink.c` — `drcom_netlink_query_link()` against `lo` and
   nonexistent interfaces; `drcom_netlink_new/free()` lifecycle.
 

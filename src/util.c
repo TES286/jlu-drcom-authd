@@ -4,6 +4,9 @@
  * @brief Small platform helpers.
  */
 #define _GNU_SOURCE 1
+#include "appconf.h" /* for DRCOM_LOG_LEVEL_* used by log.h macros */
+#include "dns.h"
+#include "log.h"
 #include "util.h"
 
 #include <arpa/inet.h>
@@ -114,6 +117,42 @@ int drcom_resolve_ipv4(const char *host, uint16_t port, struct sockaddr_in *out)
 	out->sin_port = htons(port);
 	freeaddrinfo(res);
 	return 0;
+}
+
+int drcom_resolve_ipv4_with_dns(const char *host,
+								uint16_t port,
+								const struct in_addr *dns_server,
+								unsigned timeout_ms,
+								struct sockaddr_in *out)
+{
+	/* Try the system resolver first. */
+	int r = drcom_resolve_ipv4(host, port, out);
+	if (r == 0)
+		return 0;
+
+	/* If a fallback DNS server is configured, try a direct query.
+	 * This is essential on campus networks where the system resolver
+	 * (via /etc/resolv.conf) cannot recurse until the host is
+	 * authenticated. */
+	if (dns_server) {
+		drcom_log_debug("system resolver failed for %s; "
+						"falling back to DNS server %s",
+						host,
+						inet_ntoa(*dns_server));
+		struct in_addr addr;
+		r = drcom_dns_resolve_a(host, dns_server, timeout_ms, &addr);
+		if (r == 0) {
+			memset(out, 0, sizeof(*out));
+			out->sin_family = AF_INET;
+			out->sin_addr = addr;
+			out->sin_port = htons(port);
+			drcom_log_info("DNS fallback resolved %s -> %s", host, inet_ntoa(addr));
+			return 0;
+		}
+		drcom_log_warn("DNS fallback failed for %s: %s", host, strerror(-r));
+	}
+
+	return -EHOSTUNREACH;
 }
 
 size_t drcom_hexdump(char *out, size_t cap, const uint8_t *data, size_t len)
