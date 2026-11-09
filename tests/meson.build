@@ -5,6 +5,7 @@
 tests_unit = [
     ['test_cpufeatures', 'unit/test_cpufeatures.c'],
     ['test_crypto',      'unit/test_crypto.c'],
+    ['test_dns',         'unit/test_dns.c'],
     ['test_protocol',    'unit/test_protocol.c'],
     ['test_appconf',     'unit/test_appconf.c'],
     ['test_netlink',     'unit/test_netlink.c'],

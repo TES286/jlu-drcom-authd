@@ -13,6 +13,7 @@ inc = include_directories('.')
 lib_sources = files(
     'cpufeatures.c',
     'crypto.c',
+    'dns.c',
     'protocol.c',
     'appconf.c',
     'network.c',
