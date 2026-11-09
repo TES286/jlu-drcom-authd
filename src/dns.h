@@ -46,9 +46,9 @@ extern "C" {
  * @return 0 on success, negative errno on failure.
  */
 int drcom_dns_resolve_a(const char *hostname,
-                        const struct in_addr *dns_server,
-                        unsigned timeout_ms,
-                        struct in_addr *out);
+						const struct in_addr *dns_server,
+						unsigned timeout_ms,
+						struct in_addr *out);
 
 /**
  * Encode a dotted domain name into DNS wire format (length-prefixed
@@ -74,9 +74,11 @@ size_t drcom_dns_encode_name(const char *hostname, uint8_t *out, size_t cap);
  * @param out       Output: resolved IPv4 address.
  * @return 0 on success, negative errno on failure.
  */
-int drcom_dns_parse_response(const uint8_t *query, size_t query_len,
-                             const uint8_t *resp, size_t resp_len,
-                             struct in_addr *out);
+int drcom_dns_parse_response(const uint8_t *query,
+							 size_t query_len,
+							 const uint8_t *resp,
+							 size_t resp_len,
+							 struct in_addr *out);
 
 #ifdef __cplusplus
 }
