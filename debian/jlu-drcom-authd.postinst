@@ -26,9 +26,8 @@ case "$1" in
 
         # Install default config if none exists.
         if [ ! -f /etc/jlu-drcom-authd/jlu-drcom-authd.conf ]; then
-            cp /usr/share/doc/jlu-drcom-authd/jlu-drcom-authd.conf.example \
-               /etc/jlu-drcom-authd/jlu-drcom-authd.conf 2>/dev/null || true
-            chmod 0640 /etc/jlu-drcom-authd/jlu-drcom-authd.conf
+            install -m 0640 /etc/jlu-drcom-authd/jlu-drcom-authd.conf.example \
+                /etc/jlu-drcom-authd/jlu-drcom-authd.conf
         fi
 
         # Trigger tmpfiles to create runtime/state/log dirs.

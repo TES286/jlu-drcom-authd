@@ -157,8 +157,9 @@ drcom_err_t drcom_challenge_parse(const uint8_t *in, size_t len, drcom_session_t
  */
 size_t drcom_login_pack(uint8_t *out, size_t cap, drcom_session_t *s)
 {
-	size_t pass_len = bounded_strlen(s->password, 16);
-	if (pass_len == 0) {
+	size_t pass_len = bounded_strlen(s->password, sizeof(s->password));
+	size_t uname_len = bounded_strlen(s->username, sizeof(s->username));
+	if (pass_len == 0 || pass_len > 16 || uname_len > 36) {
 		return 0;
 	}
 	size_t data_len = 334u + ((pass_len - 1u) / 4u) * 4u;
@@ -166,7 +167,6 @@ size_t drcom_login_pack(uint8_t *out, size_t cap, drcom_session_t *s)
 		return 0;
 	}
 	size_t zero_count = (4u - pass_len % 4u) % 4u;
-	size_t uname_len = bounded_strlen(s->username, 36);
 
 	/* md5a = md5(0x03 0x01, salt, password). */
 	static const uint8_t k_login_code[2] = {0x03, 0x01};
@@ -268,10 +268,10 @@ size_t drcom_login_pack(uint8_t *out, size_t cap, drcom_session_t *s)
 	out[320 + pass_len] = 0x00;
 	out[321 + pass_len] = 0x00;
 	__builtin_memcpy(out + 322 + pass_len, s->mac, 4);
-	/* checksum input = out[0 : 322 + pass_len]. */
+	/* Match the Java reference: include the first four MAC bytes. */
 	{
 		uint8_t cks[DRCOM_CHECKSUM_SIZE];
-		drcom_checksum(cks, out, 322u + pass_len);
+		drcom_checksum(cks, out, 326u + pass_len);
 		__builtin_memcpy(out + 316 + pass_len, cks, 4);
 	}
 	out[320 + pass_len] = 0x00;
@@ -338,7 +338,7 @@ size_t drcom_keep40_extra_pack(uint8_t out[DRCOM_KEEP40_SIZE], drcom_session_t *
 {
 	__builtin_memset(out, 0, DRCOM_KEEP40_SIZE);
 	out[0] = 0x07;
-	out[1] = s->count++;
+	out[1] = (uint8_t)s->count++;
 	out[2] = 0x28;
 	out[3] = 0x00;
 	out[4] = 0x0b;
@@ -356,7 +356,7 @@ size_t drcom_keep40_1_pack(uint8_t out[DRCOM_KEEP40_SIZE], drcom_session_t *s)
 {
 	__builtin_memset(out, 0, DRCOM_KEEP40_SIZE);
 	out[0] = 0x07;
-	out[1] = s->count++;
+	out[1] = (uint8_t)s->count++;
 	out[2] = 0x28;
 	out[3] = 0x00;
 	out[4] = 0x0b;
@@ -386,7 +386,7 @@ size_t drcom_keep40_2_pack(uint8_t out[DRCOM_KEEP40_SIZE], drcom_session_t *s)
 {
 	__builtin_memset(out, 0, DRCOM_KEEP40_SIZE);
 	out[0] = 0x07;
-	out[1] = s->count++;
+	out[1] = (uint8_t)s->count++;
 	out[2] = 0x28;
 	out[3] = 0x00;
 	out[4] = 0x0b;

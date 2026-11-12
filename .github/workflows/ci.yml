@@ -78,6 +78,30 @@ jobs:
       - name: Run E2E test
         run: meson test -C build --print-errorlogs --suite=e2e
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/checkout@v4
+        with:
+          repository: drcoms/jlu-drcom-client
+          ref: 2ba09ce24041c4ab7021ddbc07a366e9ae3e1c5d
+          path: .reference/jlu-drcom-client
+          persist-credentials: false
+
+      - name: Compare every request byte with Java reference
+        run: |
+          python3 tests/reference/compare_java.py \
+            --reference-dir .reference/jlu-drcom-client \
+            --packet-dump build/tests/reference_packet_dump \
+            --report build/meson-logs/java-reference.json
+
+      - name: Verify installed service files
+        run: |
+          meson install -C build --destdir "$PWD/build/stage"
+          python3 tests/regression/install.py build
+
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,7 +184,7 @@ jobs:
           arch=$(uname -m)
           mkdir -p dist/sbin dist/lib/systemd/system dist/etc/jlu-drcom-authd
           cp build/src/jlu-drcom-authd dist/sbin/
-          cp systemd/jlu-drcom-authd.service systemd/jlu-drcom-authd@.service dist/lib/systemd/system/
+          cp build/jlu-drcom-authd.service build/jlu-drcom-authd@.service dist/lib/systemd/system/
           cp systemd/jlu-drcom-authd.conf.example dist/etc/jlu-drcom-authd/
           tar -czf jlu-drcom-authd-${{ github.ref_name }}-${arch}.tar.gz -C dist .
       - name: Download amd64 .deb

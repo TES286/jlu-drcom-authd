@@ -328,13 +328,20 @@ static int reauthenticate(drcom_authd_t *a)
 		drcom_log_err("re-auth: cannot resolve %s", a->conf.server);
 		return -EHOSTUNREACH;
 	}
-	if (drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms) < 0) {
+	int r = drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms, a->conf.interface);
+	if (r < 0) {
 		drcom_log_err("re-auth: socket open failed");
-		return -EIO;
+		return r;
 	}
-	if (do_challenge_login(a) != 0) {
+	/* A new login starts a new keepalive sequence, including keep40_extra. */
+	a->session.count = 0;
+	a->session.keep38_index = 0;
+	memset(a->session.tail2, 0, sizeof(a->session.tail2));
+	r = do_challenge_login(a);
+	if (r < 0) {
 		drcom_log_err("re-authentication failed; will retry next tick");
-		return -EACCES;
+		drcom_net_close(&a->net);
+		return r;
 	}
 	set_status(a, DRCOM_STATE_ONLINE);
 	return 0;
@@ -357,7 +364,8 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 		return 0;
 	}
 
-	int r = do_keepalive_cycle(a);
+	bool was_online = a->state == DRCOM_STATE_ONLINE;
+	int r = was_online ? do_keepalive_cycle(a) : reauthenticate(a);
 	if (r < 0) {
 		keepalive_err_class_t cls = classify_keepalive_err(r);
 		a->keepalive_fail_count++;
@@ -380,7 +388,8 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 						   strerror(-r),
 						   a->keepalive_fail_count,
 						   a->conf.max_keepalive_fails);
-			(void)reauthenticate(a);
+			if (was_online && reauthenticate(a) == 0)
+				a->keepalive_fail_count = 0;
 			break;
 
 		case KEEPALIVE_ERR_PROTOCOL:
@@ -393,9 +402,10 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 			/* Best-effort logout before re-auth.  We ignore the
 			 * return value because the session may already be
 			 * half-broken. */
-			if (a->net.fd >= 0)
+			if (was_online && a->net.fd >= 0)
 				(void)do_logout(a);
-			(void)reauthenticate(a);
+			if (was_online && reauthenticate(a) == 0)
+				a->keepalive_fail_count = 0;
 			break;
 
 		case KEEPALIVE_ERR_FATAL:
@@ -406,7 +416,8 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 						  strerror(-r),
 						  a->keepalive_fail_count,
 						  a->conf.max_keepalive_fails);
-			(void)reauthenticate(a);
+			if (was_online && reauthenticate(a) == 0)
+				a->keepalive_fail_count = 0;
 			break;
 		}
 
@@ -417,7 +428,7 @@ static int on_keepalive(sd_event_source *s, uint64_t usec, void *userdata)
 			a->keepalive_fail_count >= a->conf.max_keepalive_fails) {
 			drcom_log_err("reached MaxKeepaliveFails (%u); exiting for systemd restart",
 						  a->conf.max_keepalive_fails);
-			sd_event_exit(sd_event_source_get_event(s), 0);
+			sd_event_exit(sd_event_source_get_event(s), EXIT_FAILURE);
 			return 0;
 		}
 	} else {
@@ -462,14 +473,14 @@ static int schedule_keepalive(drcom_authd_t *a)
 /**
  * Deferred re-authentication callback.  Scheduled by on_link_state()
  * when the link comes back up.  Doing the re-auth in a defer source
- * (rather than inside the netlink IO callback) avoids blocking the
- * event loop during the challenge/login network round-trips.
+ * separates authentication from processing the netlink notification batch.
+ * The network round-trips still block the event loop up to their timeouts.
  */
 static int on_reauth_defer(sd_event_source *s, void *userdata)
 {
-	(void)s;
 	drcom_authd_t *a = userdata;
-	a->reauth_defer = NULL; /* one-shot; auto-unrefs */
+	a->reauth_defer = NULL;
+	sd_event_source_unref(s);
 	if (a->stopping)
 		return 0;
 	if (!a->link_up) {
@@ -678,7 +689,7 @@ int drcom_authd_start(drcom_authd_t *a)
 		drcom_log_err("cannot resolve %s: %s", a->conf.server, strerror(-r));
 		return r;
 	}
-	r = drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms);
+	r = drcom_net_open(&a->net, &srv, a->conf.recv_timeout_ms, a->conf.interface);
 	if (r < 0) {
 		drcom_log_err("socket open failed: %s", strerror(-r));
 		return r;

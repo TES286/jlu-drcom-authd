@@ -270,5 +270,5 @@ int main(int argc, char **argv)
 	sd_event_unref(event);
 	drcom_log_info("exiting");
 	drcom_log_close();
-	return (r < 0) ? 1 : 0;
+	return (r < 0) ? EXIT_FAILURE : r;
 }

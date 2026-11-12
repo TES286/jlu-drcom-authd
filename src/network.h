@@ -28,11 +28,13 @@ typedef struct {
 
 /**
  * Create a UDP socket, bind to ephemeral port, connect to @p server:port.
+ * If nonempty, @p interface selects the IPv4 outgoing interface.
  * @return 0 on success, negative errno on failure.
  */
 int drcom_net_open(drcom_net_t *n,
 				   const struct sockaddr_in *server,
-				   unsigned recv_timeout_ms);
+				   unsigned recv_timeout_ms,
+				   const char *interface);
 
 /** Send @p len bytes.  Returns 0 on success, negative errno on failure. */
 int drcom_net_send(drcom_net_t *n, const uint8_t *buf, size_t len);
