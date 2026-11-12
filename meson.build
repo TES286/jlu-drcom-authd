@@ -56,7 +56,9 @@ conf_data.set_quoted('PACKAGE_VERSION', meson.project_version())
 conf_data.set_quoted('PACKAGE_NAME', meson.project_name())
 
 subdir('src')
-subdir('tests')
+if not get_option('tests').disabled()
+    subdir('tests')
+endif
 
 # Install systemd unit files. The directory picked at runtime comes from
 # pkg-config --variable=systemdsystemunitdir; this lets distro packagers
@@ -70,11 +72,16 @@ if systemdsystemunitdir == ''
     endif
 endif
 
-install_data(
-    'systemd/jlu-drcom-authd.service',
-    'systemd/jlu-drcom-authd@.service',
-    install_dir : systemdsystemunitdir,
-)
+unit_conf = configuration_data()
+unit_conf.set('sbindir', get_option('prefix') / get_option('sbindir'))
+foreach unit : ['jlu-drcom-authd.service', 'jlu-drcom-authd@.service']
+    configure_file(
+        input : 'systemd' / unit,
+        output : unit,
+        configuration : unit_conf,
+        install_dir : systemdsystemunitdir,
+    )
+endforeach
 
 # Example config under /etc via sysconfdir.
 install_data(

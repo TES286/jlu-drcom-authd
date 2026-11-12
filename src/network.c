@@ -8,6 +8,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <string.h>
@@ -16,7 +17,8 @@
 
 int drcom_net_open(drcom_net_t *n,
 				   const struct sockaddr_in *server,
-				   unsigned recv_timeout_ms)
+				   unsigned recv_timeout_ms,
+				   const char *interface)
 {
 	n->fd = -1;
 	n->recv_timeout_ms = recv_timeout_ms;
@@ -24,8 +26,24 @@ int drcom_net_open(drcom_net_t *n,
 	if (fd < 0)
 		return -errno;
 
-	/* Bind to ephemeral port; explicit bind avoids surprises when there are
-	 * multiple interfaces. */
+	/* Route this socket through the selected interface without requiring
+	 * CAP_NET_RAW/CAP_NET_ADMIN (unlike SO_BINDTODEVICE). */
+	if (interface && interface[0]) {
+		unsigned index = if_nametoindex(interface);
+		if (index == 0) {
+			int e = errno ? errno : ENODEV;
+			close(fd);
+			return -e;
+		}
+		uint32_t index_be = htonl(index);
+		if (setsockopt(fd, IPPROTO_IP, IP_UNICAST_IF, &index_be, sizeof(index_be)) < 0) {
+			int e = errno;
+			close(fd);
+			return -e;
+		}
+	}
+
+	/* Bind to an ephemeral port; interface selection above controls routing. */
 	struct sockaddr_in local = {0};
 	local.sin_family = AF_INET;
 	local.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -48,7 +66,11 @@ int drcom_net_open(drcom_net_t *n,
 		.tv_sec = (time_t)(recv_timeout_ms / 1000u),
 		.tv_usec = (suseconds_t)((recv_timeout_ms % 1000u) * 1000u),
 	};
-	(void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
+		int e = errno;
+		close(fd);
+		return -e;
+	}
 
 	n->fd = fd;
 	n->server = *server;

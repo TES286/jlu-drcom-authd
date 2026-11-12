@@ -10,6 +10,9 @@ After=network-online.target
 Wants=network-online.target
 After=network.target
 Wants=network.target
+# Bound the restart storm on persistent failure.
+StartLimitBurst=10
+StartLimitIntervalSec=120
 
 [Service]
 Type=notify
@@ -20,9 +23,6 @@ NotifyAccess=main
 WatchdogSec=30s
 Restart=on-failure
 RestartSec=5s
-# Bound the restart storm on persistent failure.
-StartLimitBurst=10
-StartLimitIntervalSec=120
 
 # Hardening
 CapabilityBoundingSet=

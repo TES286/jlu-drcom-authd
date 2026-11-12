@@ -12,6 +12,8 @@ After=network-online.target
 Wants=network-online.target
 BindsTo=sys-subsystem-net-devices-%i.device
 After=sys-subsystem-net-devices-%i.device
+StartLimitBurst=10
+StartLimitIntervalSec=120
 
 [Service]
 Type=notify
@@ -19,8 +21,6 @@ NotifyAccess=main
 WatchdogSec=30s
 Restart=on-failure
 RestartSec=5s
-StartLimitBurst=10
-StartLimitIntervalSec=120
 
 # Hardening (mirrors the non-template unit)
 CapabilityBoundingSet=
@@ -53,7 +53,7 @@ LogsDirectory=jlu-drcom-authd-%i
 RuntimeDirectory=jlu-drcom-authd-%i
 RuntimeDirectoryPreserve=yes
 
-# Per-interface config file; falls back to the default if absent.
+# Per-interface config file (required).
 Environment=DRCOM_INTERFACE=%i
 Environment=DRCOM_FOREGROUND=1
 ExecStart=@sbindir@/jlu-drcom-authd --foreground \

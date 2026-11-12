@@ -25,6 +25,13 @@ def md5(*parts: bytes) -> bytes:
     return h.digest()
 
 
+def checksum(data: bytes) -> bytes:
+    value = 1234
+    for i in range(0, len(data), 4):
+        value ^= int.from_bytes(data[i:i+4], 'little')
+    return ((value * 1968) & 0xffffffff).to_bytes(4, 'little')
+
+
 def main(port: int) -> int:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -107,6 +114,18 @@ def main(port: int) -> int:
             if data[58:64] != expected_xor:
                 print(f"[mock] login md5a^mac mismatch: expected {expected_xor.hex()}, got {data[58:64].hex()}",
                       flush=True)
+                sock.sendto(bytes([0x05, 0, 0, 5, 0x0b]), addr)
+                continue
+            # Reconstruct the reference checksum input, including four MAC
+            # bytes. A valid md5a alone does not make a valid login packet.
+            pass_len = len(PASSWORD)
+            offset = 316 + pass_len
+            check_data = bytearray(data[:326+pass_len])
+            check_data[offset:offset+4] = bytes.fromhex('01260711')
+            if data[offset:offset+4] != checksum(check_data):
+                print('[mock] login checksum mismatch', flush=True)
+                sock.sendto(bytes([0x05, 0, 0, 5, 3]), addr)
+                continue
             resp = bytearray(128)
             resp[0] = 0x04  # success
             resp[23:39] = TAIL1

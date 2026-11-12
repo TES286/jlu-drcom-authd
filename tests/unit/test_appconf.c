@@ -244,6 +244,30 @@ static void test_validate_timing_zero(void)
 		  err);
 }
 
+static void test_validate_credential_limits(void)
+{
+	drcom_appconf_t c;
+	drcom_appconf_defaults(&c);
+	memset(c.username, 'u', 36);
+	memset(c.password, 'p', 16);
+	c.mac[0] = 1;
+	char err[256];
+	CHECK(drcom_appconf_validate(&c, err, sizeof(err)) == 0,
+		  "maximum ASCII credentials should validate: %s",
+		  err);
+	c.password[16] = 'p';
+	CHECK(drcom_appconf_validate(&c, err, sizeof(err)) < 0,
+		  "17-byte password should be rejected instead of truncated");
+	c.password[16] = 0;
+	c.username[36] = 'u';
+	CHECK(drcom_appconf_validate(&c, err, sizeof(err)) < 0,
+		  "37-byte username should be rejected instead of truncated");
+	c.username[36] = 0;
+	c.password[0] = (char)0xc3;
+	CHECK(drcom_appconf_validate(&c, err, sizeof(err)) < 0,
+		  "non-ASCII credentials should be rejected");
+}
+
 int main(void)
 {
 	test_defaults();
@@ -258,6 +282,7 @@ int main(void)
 	test_validate_bad_interface();
 	test_validate_max_keepalive_fails();
 	test_validate_timing_zero();
+	test_validate_credential_limits();
 
 	if (failures == 0) {
 		printf("test_appconf: PASS\n");

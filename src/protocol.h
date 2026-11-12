@@ -72,7 +72,7 @@ typedef struct {
 
 	/* Counters. */
 	uint8_t challenge_times; /* starts at 2, incremented per challenge */
-	uint8_t count;			 /* keep40 counter, wraps 0..255 */
+	uint32_t count;			 /* full keep40 count; only the wire byte wraps 0..255 */
 	unsigned keep38_index;	 /* 1-based index of the current keep38 cycle */
 } drcom_session_t;
 
@@ -96,7 +96,8 @@ drcom_err_t drcom_challenge_parse(const uint8_t *in, size_t len, drcom_session_t
 /**
  * Build a login packet into @p out (capacity @p cap).
  * On success returns the number of bytes written (<= DRCOM_LOGIN_REQ_MAX).
- * Returns 0 on error (cap too small).  Updates s->md5a.
+ * Returns 0 on error (cap too small or unsupported credential lengths).
+ * Updates s->md5a.
  */
 size_t drcom_login_pack(uint8_t *out, size_t cap, drcom_session_t *s);
 

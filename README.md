@@ -28,11 +28,12 @@ watchdog, sends structured journal entries, exposes live status via
   arm64 binary runs on every aarch64 SoC, with the NEON fast path
   dispatched only when the kernel reports `HWCAP_ASIMD`.  No compile-time
   `-march` flags required.
-* **Link state monitoring.** Subscribes to rtnetlink `RTMGRP_LINK` and
-  reacts to interface up/down events in ~1 ms — closing the UDP socket
-  immediately on link-down and re-authenticating on link-up, instead of
-  waiting for a keepalive timeout (up to 20 s).  Integrated into the
-  `sd_event` loop as a non-blocking IO source.
+* **Link state monitoring.** Subscribes to rtnetlink `RTMGRP_LINK`, closes
+  the UDP socket on link-down, and schedules re-authentication on link-up.
+  Notifications are handled when the `sd_event` loop is available; a
+  synchronous network operation can delay processing up to its timeout.
+  `Interface` also selects the UDP socket's outgoing interface through
+  `IP_UNICAST_IF`, without requiring extra capabilities.
 * **DNS fallback for pre-authentication.** On campus networks the
   system DNS resolver (via `/etc/resolv.conf`) often cannot recurse
   until the host is authenticated, so `getaddrinfo(3)` fails to resolve
@@ -141,6 +142,8 @@ Foreground = false
 
 A `PasswordFile = /path/to/file` (mode `0600`) is preferred over an
 inline `Password =` for production; the daemon reads it once at startup.
+Credentials must be ASCII, with a username of 1–36 bytes and a password
+of 1–16 bytes. Unsupported lengths are rejected rather than truncated.
 
 ## Running
 
@@ -237,7 +240,9 @@ watched interface's `IFF_UP | IFF_LOWER_UP` flags changed:
   login) on the next event loop iteration.  Using `sd_event_add_defer`
   avoids blocking the netlink IO callback during the network round-trip.
 
-This cuts recovery time from a keepalive timeout (~20 s) to ~1 ms.
+This lets link events initiate recovery without waiting for the next
+keepalive timer. Recovery includes DNS lookup and the authentication
+round-trips; it has no fixed millisecond latency guarantee.
 
 ### Runtime CPU feature detection
 
@@ -291,6 +296,44 @@ Located in `tests/unit/`:
 
 The mock server doubles as a reference router-software process for
 testing per the project brief.
+
+### Byte-for-byte comparison with the Java reference
+
+The separate reference test compiles the original Java packet builders,
+MD5, checksum, CRC and `ror` code from a pinned upstream commit. The
+adapter supplies host information and a deterministic byte stream for
+randomness; it does not replace packet-building logic. It compares every
+byte of challenge, login, keep38, keep40_extra, keep40_1, keep40_2 and
+logout UDP payloads, including their order and lengths.
+
+With JDK 17+, Python 3 and the normal build dependencies installed:
+
+```sh
+git clone https://github.com/drcoms/jlu-drcom-client.git ../jlu-drcom-reference
+git -C ../jlu-drcom-reference checkout 2ba09ce24041c4ab7021ddbc07a366e9ae3e1c5d
+meson setup build
+meson compile -C build
+python3 tests/reference/compare_java.py \
+    --reference-dir ../jlu-drcom-reference \
+    --packet-dump build/tests/reference_packet_dump \
+    --report build/meson-logs/java-reference.json
+```
+
+The deterministic corpus contains 196 scenarios and 22,463 requests. It
+covers every supported password length, maximum field sizes, binary MAC
+addresses, challenge-byte rollover, and long keepalive sequences crossing
+the 8-bit wire-counter boundary. CI runs this comparison on amd64 and
+arm64. Java is only a test dependency.
+
+`meson test -C build` also covers timeout failure exit codes, re-login
+retries, keepalive sequence reset, and interface selection. To check the
+installed units and the Debian post-install configuration logic without
+starting a service or changing host configuration:
+
+```sh
+meson install -C build --destdir "$PWD/build/stage"
+python3 tests/regression/install.py build
+```
 
 ## Protocol reference
 

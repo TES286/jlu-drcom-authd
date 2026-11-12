@@ -367,6 +367,18 @@ int drcom_appconf_validate(const drcom_appconf_t *c, char *errbuf, size_t errbuf
 	if (c->password[0] == 0)
 		return set_err(
 			errbuf, errbuf_sz, "Password is not set (and no PasswordFile resolved)");
+	/* These are byte limits, matching the Java reference's ASCII credentials.
+	 * Reject unsupported input instead of silently truncating authentication. */
+	if (strlen(c->username) > 36 || strlen(c->password) > 16)
+		return set_err(
+			errbuf, errbuf_sz, "Username must be <= 36 bytes and Password <= 16 bytes");
+	const char *credentials[] = {c->username, c->password};
+	for (size_t i = 0; i < 2; i++) {
+		for (const unsigned char *p = (const unsigned char *)credentials[i]; *p; p++) {
+			if (*p > 0x7f)
+				return set_err(errbuf, errbuf_sz, "Username and Password must be ASCII");
+		}
+	}
 
 	/* Network. */
 	if (c->server[0] == 0)

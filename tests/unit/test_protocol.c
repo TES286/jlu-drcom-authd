@@ -4,14 +4,14 @@
  * @brief Unit tests for the protocol module.
  *
  * Verifies packet structure invariants: header bytes, length formulas,
- * field offsets.  Cryptographic fields (md5a, checksum) are validated
- * structurally rather than against captured vectors because they depend
- * on per-call random bytes and credential material; the e2e test in
- * tests/e2e/ exercises the full round-trip against a mock server.
+ * field offsets, a Java-reference login checksum, and keepalive scheduling
+ * across wire-counter wraparound. tests/reference/compare_java.py compares
+ * complete requests against the original Java packet builders.
  */
 #include "crypto.h"
 #include "protocol.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -396,6 +396,51 @@ static void test_logout_parse(void)
 		  "logout non-ack should return ERR_SERVER");
 }
 
+static void test_login_checksum_reference(void)
+{
+	drcom_session_t s;
+	drcom_session_init(&s);
+	strcpy(s.username, "testuser");
+	strcpy(s.password, "pppppppp");
+	strcpy(s.hostname, "testhost");
+	memcpy(s.mac, "\xde\xad\xbe\xef\x00\x42", 6);
+	memcpy(s.salt, "\x11\x22\x33\x44", 4);
+	memcpy(s.client_ip, "\x0a\x14\x1e\x28", 4);
+	uint8_t packet[DRCOM_LOGIN_REQ_MAX];
+	CHECK(drcom_login_pack(packet, sizeof(packet), &s) == 338, "login length");
+	/* Java makeLoginPacket/ByteUtil.checksum; trailer randomness is outside
+	 * the checksum input and therefore does not change this fixture. */
+	CHECK(memcmp(packet + 324, "\xc0\xbe\x97\x07", 4) == 0,
+		  "login checksum differs from Java reference");
+	memset(s.password, 'p', 17);
+	s.password[17] = 0;
+	CHECK(drcom_login_pack(packet, sizeof(packet), &s) == 0,
+		  "unsupported password must not be silently truncated");
+}
+
+static void test_keepalive_counter_wrap(void)
+{
+	drcom_session_t s;
+	drcom_session_init(&s);
+	uint8_t packet[DRCOM_KEEP40_SIZE];
+	unsigned total = 0;
+	for (unsigned cycle = 0; cycle < 1000; cycle++) {
+		bool extra = (cycle % 10u) == 0;
+		CHECK((bool)drcom_keep38_needs_extra(&s) == extra,
+			  "extra schedule differs at cycle %u",
+			  cycle);
+		if (extra) {
+			drcom_keep40_extra_pack(packet, &s);
+			CHECK(packet[1] == (uint8_t)total++, "extra wire counter");
+		}
+		drcom_keep40_1_pack(packet, &s);
+		CHECK(packet[1] == (uint8_t)total++, "keep40_1 wire counter");
+		drcom_keep40_2_pack(packet, &s);
+		CHECK(packet[1] == (uint8_t)total++, "keep40_2 wire counter");
+	}
+	CHECK(s.count == total, "full counter was truncated");
+}
+
 int main(void)
 {
 	test_session_init();
@@ -411,6 +456,8 @@ int main(void)
 	test_keep38_needs_extra();
 	test_logout_pack();
 	test_logout_parse();
+	test_login_checksum_reference();
+	test_keepalive_counter_wrap();
 
 	if (failures == 0) {
 		printf("test_protocol: PASS\n");
